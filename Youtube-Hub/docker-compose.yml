@@ -1,0 +1,158 @@
+# The MIT License (MIT)
+#
+# Copyright (c) 2025 Che-Hung Lin
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+# THE SOFTWARE.
+
+name: youtube-hub-services
+
+x-common-env-files: &common-env-files
+  - ${APP_ENV_FILE:-.env.base}
+
+services:
+  youtube-hub-db:
+    image: youtube-hub-database
+    build: youtube-hub-database/
+    container_name: youtube-hub-database
+    hostname: youtube-hub-db
+    restart: unless-stopped
+    env_file: *common-env-files
+    volumes: # Use a bind mount to a configurable host path
+      - "${YOUTUBE_HUB_DB_DATA_PATH}:/var/lib/mysql"
+    networks:
+      youtube-hub-network:
+        ipv4_address: 172.16.13.10
+    # ports:
+      # - "${YOUTUBE_HUB_DB_PORT:-3306}:3306"
+    environment:
+      - MYSQL_ROOT_PASSWORD=${MYSQL_ROOT_PASSWORD}
+      - MYSQL_USER=${MYSQL_USER}
+      - MYSQL_PASSWORD=${MYSQL_PASSWORD}
+      - MYSQL_DATABASE=${YOUTUBE_HUB_MYSQL_DATABASE:-youtubehub}
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h localhost -uroot -p$${MYSQL_ROOT_PASSWORD}"]
+      # How often to run the check.
+      interval: 30s
+      # How long to wait for the check to return.
+      timeout: 10s
+      # How many times to retry before marking as unhealthy.
+      retries: 5
+      # Grace period for startup. Checks every 5s during this time.
+      start_period: 60s
+
+  youtube-hub-backend:
+    image: youtube-hub-backend
+    build:
+      context: ..
+      dockerfile: ./Youtube-Hub/youtube-hub-backend/Dockerfile
+    container_name: youtube-hub-backend
+    hostname: youtube-hub-backend
+    restart: unless-stopped
+    env_file: *common-env-files
+    networks:
+      youtube-hub-network:
+        ipv4_address: 172.16.13.11
+      shared-services-network:
+        ipv4_address: 172.16.10.12
+    ports:
+      - "${BACKEND_PORT:-8083}:8080"
+    depends_on:
+      youtube-hub-db:
+        condition: service_healthy
+    environment:
+      # Override the datasource URL to use the Docker service name
+      - SPRING_DATASOURCE_URL=jdbc:mysql://youtube-hub-db:3306/${YOUTUBE_HUB_MYSQL_DATABASE:-youtubehub}
+      # It's good practice to also provide credentials via environment variables
+      - SPRING_DATASOURCE_USERNAME=${MYSQL_USER}
+      - SPRING_DATASOURCE_PASSWORD=${MYSQL_PASSWORD}
+      # Override the server port to 8080 for the container environment
+      - SERVER_PORT=8080
+      # Configure CORS allowed origins
+      - CORS_ALLOWED_ORIGINS=${CORS_ALLOWED_ORIGINS}
+      # Override the downloader URL to use the Docker service name
+      - YOUTUBE_HUB_DOWNLOADER_URL=${PUBLIC_DOWNLOADER_URL:-http://downloader-backend:8080}
+      # Override the JWT issuer URI to use the authentication service's Docker service name
+      - SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUER_URI=${AUTH_SERVICE_API_URL:-http://authentication-backend:8080}
+      # Default configuration for the YouTube Hub API.
+      # These values override the defaults in `application.properties` and are used to create the initial 'default' config.
+      - YOUTUBE_HUB_DEFAULT_CONFIG_YOUTUBE_API_KEY=${YOUTUBE_HUB_DEFAULT_YOUTUBE_API_KEY}
+      - YOUTUBE_HUB_DEFAULT_CONFIG_CLIENT_ID=${YOUTUBE_HUB_DEFAULT_CLIENT_ID}
+      - YOUTUBE_HUB_DEFAULT_CONFIG_CLIENT_SECRET=${YOUTUBE_HUB_DEFAULT_CLIENT_SECRET}
+      # Explicitly disable Spring Boot's "Debug Mode" (auto-config report) so it doesn't conflict with Next.js DEBUG var.
+      - DEBUG=false
+    # Set memory limits for standard 'docker-compose up'
+    mem_limit: 1024M
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8080/health || exit 1"]
+      # How often to run the check.
+      interval: 30s
+      # How long to wait for the check to return.
+      timeout: 10s
+      # How many times to retry before marking as unhealthy.
+      retries: 5
+      # Grace period for startup. Checks every 5s during this time.
+      start_period: 60s
+
+  youtube-hub-frontend:
+    image: youtube-hub-frontend
+    build: 
+      context: ./youtube-hub-frontend/
+      dockerfile: Dockerfile
+      args:
+        # This is for client-side fetching from the browser, passed at build time
+        NEXT_PUBLIC_BROWSER_API_URL: ${PUBLIC_BACKEND_URL:-http://youtube-hub-backend:8080}
+    container_name: youtube-hub-frontend
+    hostname: youtube-hub-frontend
+    restart: unless-stopped
+    env_file: *common-env-files
+    networks:
+      youtube-hub-network:
+        ipv4_address: 172.16.13.12
+      shared-services-network:
+        ipv4_address: 172.16.10.13
+    ports:
+      - "${FRONTEND_PORT:-3000}:3000"
+    environment:
+      # Ensure Next.js binds to all interfaces (0.0.0.0) and uses port 3000
+      HOSTNAME: 0.0.0.0
+      PORT: 3000
+      # This is for server-side security and callback URLs, passed at runtime
+      AUTH_SECRET: ${AUTH_SECRET}
+      # When trustHost is true in auth.ts, NextAuth infers the URL from headers.
+      # Keep this commented out to support access via both public domain (https://...)
+      # and local IP (http://...) simultaneously.
+      # NEXTAUTH_URL: ${NEXTAUTH_URL}
+      # These are for server-side fetching from within the Next.js container
+      AUTH_SERVICE_API_URL: ${AUTH_SERVICE_API_URL:-http://authentication-backend:8080}
+      PUBLIC_BACKEND_URL: ${PUBLIC_BACKEND_URL:-http://youtube-hub-backend:8080}
+      PUBLIC_DOWNLOADER_URL: ${PUBLIC_DOWNLOADER_URL:-http://downloader-backend:8080}
+    depends_on:
+      youtube-hub-backend:
+        condition: service_healthy
+
+networks:
+  youtube-hub-network:
+    name: youtube-hub-network
+    ipam:
+      driver: default
+      config:
+        - subnet: 172.16.13.0/24
+          gateway: 172.16.13.1
+  shared-services-network:
+    external: true

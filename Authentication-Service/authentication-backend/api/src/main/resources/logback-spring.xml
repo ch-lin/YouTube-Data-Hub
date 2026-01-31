@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+ The MIT License (MIT)
+
+ Copyright (c) 2025 Che-Hung Lin
+
+ Permission is hereby granted, free of charge, to any person obtaining a copy
+ of this software and associated documentation files (the "Software"), to deal
+ in the Software without restriction, including without limitation the rights
+ to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ copies of the Software, and to permit persons to whom the Software is
+ furnished to do so, subject to the following conditions:
+
+ The above copyright notice and this permission notice shall be included in
+ all copies or substantial portions of the Software.
+
+ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+ THE SOFTWARE.
+-->
+<configuration>
+    <!-- Include Spring Boot's default logback configuration for base setup. -->
+    <include resource="org/springframework/boot/logging/logback/defaults.xml"/>
+
+    <!-- Define a property for the log file path. It uses environment variables or system properties
+         with fallbacks, defaulting to a 'spring.log' file in the system's temp directory. -->
+    <property name="LOG_FILE" value="${LOG_FILE:-${LOG_PATH:-${LOG_TEMP:-${java.io.tmpdir:-/tmp}}}/spring.log}"/>
+
+    <!-- Appender for logging to the console (stdout). -->
+    <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder>
+            <!--
+            Pattern for console logs. Includes a timestamp, thread name, log level, logger name,
+            correlation ID from MDC for request tracing, the log message, and a newline.
+            -->
+            <pattern>%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level %logger{36} [%X{correlationId}] - %msg%n</pattern>
+        </encoder>
+    </appender>
+
+    <!-- Appender for logging to a file, with rolling capabilities. -->
+    <appender name="FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
+        <file>${LOG_FILE}</file>
+        <!-- Time-based rolling policy. Creates a new log file daily and keeps a history of the last 30 days. -->
+        <rollingPolicy class="ch.qos.logback.core.rolling.TimeBasedRollingPolicy">
+            <fileNamePattern>${LOG_FILE}.%d{yyyy-MM-dd}.log</fileNamePattern>
+            <maxHistory>30</maxHistory>
+        </rollingPolicy>
+        <encoder>
+            <!-- Pattern for file logs, consistent with the console pattern. -->
+            <pattern>%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level %logger{36} [%X{correlationId}] - %msg%n</pattern>
+        </encoder>
+    </appender>
+
+    <!-- Set a specific log level for the application's packages.
+         This is useful for getting more detailed logs from your own code during development
+         without affecting the verbosity of third-party libraries. -->
+    <logger name="ch.lin.authentication.service" level="DEBUG"/>
+    <!-- <logger name="ch.lin.authentication.service.backend.api.app.service.AuthorizationServiceImpl" level="DEBUG"/> -->
+
+    <!-- The root logger configuration. All loggers inherit from this. -->
+    <root level="INFO">
+        <!-- Attach both the CONSOLE and FILE appenders to the root logger. -->
+        <appender-ref ref="CONSOLE"/>
+        <appender-ref ref="FILE"/>
+    </root>
+
+</configuration>
