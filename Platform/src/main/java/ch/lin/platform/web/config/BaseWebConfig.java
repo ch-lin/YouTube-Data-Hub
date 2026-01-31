@@ -74,11 +74,12 @@ public class BaseWebConfig implements WebMvcConfigurer {
         logger.info("Configuring content negotiation");
         configurer.favorParameter(true)
                 .parameterName("mediaType")
-                .ignoreAcceptHeader(true)
+                .ignoreAcceptHeader(false)
                 .useRegisteredExtensionsOnly(false)
                 .defaultContentType(MediaType.APPLICATION_JSON)
                 .mediaType("xml", Objects.requireNonNull(MediaType.APPLICATION_XML))
-                .mediaType("json", Objects.requireNonNull(MediaType.APPLICATION_JSON));
+                .mediaType("json", Objects.requireNonNull(MediaType.APPLICATION_JSON))
+                .mediaType("stream", Objects.requireNonNull(MediaType.TEXT_EVENT_STREAM));
     }
 
     /**
