@@ -340,6 +340,8 @@ public class ExecutorServiceImpl implements ExecutorService {
         // for the output file inside this directory.
         List<String> command = new ArrayList<>();
         command.add("yt-dlp");
+        command.add("--js-runtimes");
+        command.add("node");
 
         YtDlpConfig ytDlpConfig = config.getYtDlpConfig();
 
@@ -587,7 +589,12 @@ public class ExecutorServiceImpl implements ExecutorService {
      */
     private boolean videoHasSubtitles(String videoUrl) {
         logger.info("Checking for subtitles for video: {}", videoUrl);
-        List<String> command = Arrays.asList("yt-dlp", "--list-subs", videoUrl);
+        List<String> command = new ArrayList<>();
+        command.add("yt-dlp");
+        command.add("--js-runtimes");
+        command.add("node");
+        command.add("--list-subs");
+        command.add(videoUrl);
 
         try {
             Process process = startProcess(command, null);
