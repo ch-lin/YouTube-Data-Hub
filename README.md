@@ -9,7 +9,7 @@
 
 **YouTube Data Hub** is a self-hosted data asset management platform and intelligence hub designed for YouTube content tracking.
 
-It was born out of a simple yet frustrating pain point: **The unreliability of YouTube's native notification system.** When creators upload multiple videos in a short burst, native notifications often miss some updates, forcing users to manually check channel pages.
+It was born out of a simple yet frustrating pain point: **The limitations of YouTube's native notification system.** When creators upload multiple videos in a short burst, native notifications often miss some updates, forcing users to manually check channel pages.
 
 This project solves that problem through automated tracking and provides a unified platform for asset management, downloading, and AI interaction.
 
@@ -25,6 +25,7 @@ This project adopts a **Microservices Architecture**, decoupling different respo
     * **Design Patterns**:
         * **Proxy Pattern**: Acts as the intermediary between the user and underlying infrastructure. The user does not need to know how the backend services communicate.
         * **Fire-and-Forget (EIP)**: When a user initiates a download via the UI, the Hub asynchronously forwards the request to the Downloader and returns immediately. This ensures a non-blocking, fluid user experience.
+    * **Future Plan**: The UI is currently tightly coupled with the backend. A refactor is planned to decouple the Next.js frontend into a standalone service, communicating with the Core via REST APIs.
 
 * **Downloader Service**
     * **Role**: The "Worker" responsible for heavy lifting.
@@ -50,9 +51,9 @@ This project adopts a **Microservices Architecture**, decoupling different respo
     * **Function**: Implements the MCP standard, allowing AI Agents (like Cursor, Claude Desktop) to communicate directly with the database using natural language.
     * **Note**: The current MCP implementation does not yet enforce API Key authentication. It is recommended for use only in trusted internal networks.
 
-## 💡 Technical Highlights & Design Decisions
+## 🧩 Integration Patterns & Design Decisions
 
-This project implements several advanced engineering patterns to ensure scalability, reliability, and a smooth user experience.
+This project adopts specific integration patterns and architectural choices to ensure scalability, reliability, and a smooth user experience.
 
 ### 1. Asynchronous Processing (Fire-and-Forget)
 * **Challenge**: Video downloading and processing are I/O intensive operations. Handling them synchronously would block the UI thread and degrade the user experience.
@@ -60,11 +61,22 @@ This project implements several advanced engineering patterns to ensure scalabil
 * **Trade-off**: While this significantly improves UX, it introduces complexity in error tracking.
 * **Mitigation**: A comprehensive state tracking mechanism (PENDING -> DOWNLOADING -> COMPLETED/FAILED) is implemented in the database to ensure eventual consistency and provide real-time status updates via the UI.
 
-### 2. Flat Mono-repo Structure
+### 2. Callback Pattern (Status Reporting)
+* **Challenge**: Polling the Downloader service for status updates is inefficient and creates unnecessary network load.
+* **Solution**: The Downloader service actively calls back the Hub's REST API to report status changes (Downloading -> Completed/Failed).
+* **Benefit**: Ensures real-time consistency without the overhead of polling.
+
+### 3. Proxy Pattern (Centralized Access)
+* **Challenge**: Direct communication between the frontend and multiple backend services (Downloader, Auth) increases coupling and security surface area.
+* **Solution**: The **YouTube-Hub** acts as an intermediary proxy. The user/UI only interacts with the Hub, which orchestrates requests to the Downloader or Database.
+* **Benefit**: Encapsulates system complexity and provides a single point of entry for security and logic.
+* **Future Plan**: The Downloader is architected as a standalone service, with plans to eventually expose it for direct use by other clients (e.g., CLI tools, Mobile Apps).
+
+### 4. Flat Mono-repo Structure
 * **Decision**: The project utilizes a **Flat Mono-repo** structure where services (`Authentication`, `Downloader`) and the core application (`YouTube-Hub`) coexist as siblings.
 * **Rationale**: This approach simplifies dependency management and ensures atomic commits across full-stack features, which is ideal for tight-knit microservices development. It also allows AI coding assistants to maintain full context of the project.
 
-### 3. Model Context Protocol (MCP) Integration
+### 5. Model Context Protocol (MCP) Integration
 * **Architecture**: Instead of building a traditional rigid chatbot, the system implements the **Model Context Protocol (MCP)**.
 * **Benefit**: This decouples the backend logic from specific AI models. The system remains "Model Agnostic"—switching the AI client (e.g., from Cursor to Claude Desktop) requires zero code changes in the backend.
 
@@ -175,6 +187,19 @@ Moving beyond asset management, the platform is evolving into a data intelligenc
 
 1.  **Viral Detection**: A scheduled background job will ingest public signals (View/Like velocity) to detect potential viral videos before they peak.
 2.  **Python Analytics Worker**: Plans to integrate a dedicated Python service for performing trend analysis and calculating a "Viral Score," which can then be queried via the MCP interface.
+
+## ✅ TODO List
+
+- [ ] Add More MCP Endpoints
+- [ ] Add YouTube Data API Request Counter
+- [ ] Add YouTube Data API Fetch Scheduler
+- [ ] Save "Force Published After" UI Status
+- [ ] Add Paging Feature in YouTube Hub's REST API to Avoid Out of Memory
+- [ ] Implement YouTube Statistics Processing Task
+- [ ] Refactor: Decouple UI from Core Service (Frontend-Backend Separation)
+- [ ] YouTube-Hub `YoutubeHubService` Refactor
+- [ ] Downloader `ExecutorService` Refactor
+- [ ] Infrastructure: Deploy to GCP using Terraform (Long-term Plan)
 
 ## ⚠️ Disclaimer
 
