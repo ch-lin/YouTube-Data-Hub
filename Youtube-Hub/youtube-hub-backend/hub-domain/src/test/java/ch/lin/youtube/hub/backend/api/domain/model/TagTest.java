@@ -42,6 +42,7 @@ class TagTest {
     private String tagName;
 
     @BeforeEach
+    @SuppressWarnings("unused")
     void setUp() {
         tagName = "Test Tag";
         tag = new Tag(tagName, new HashSet<>());

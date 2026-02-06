@@ -100,6 +100,7 @@ class ConfigsServiceImplTest {
         defaultYtDlpConfig.setAudioFormat("mp3");
         defaultYtDlpConfig.setAudioQuality(0);
         defaultYtDlpConfig.setNoProgress(true);
+        defaultYtDlpConfig.setUseCookie(false);
 
         defaultConfig = new DownloaderConfig();
         defaultConfig.setName("default");
@@ -511,6 +512,7 @@ class ConfigsServiceImplTest {
         ytDlpConfigCommand.setAudioFormat("wav");
         ytDlpConfigCommand.setAudioQuality(9);
         ytDlpConfigCommand.setNoProgress(false);
+        ytDlpConfigCommand.setUseCookie(true);
         ytDlpConfigCommand.setCookie("new-cookie");
 
         command.setYtDlpConfig(ytDlpConfigCommand);
@@ -551,6 +553,7 @@ class ConfigsServiceImplTest {
         assertThat(resultYtDlp.getAudioFormat()).isEqualTo("wav");
         assertThat(resultYtDlp.getAudioQuality()).isEqualTo(9);
         assertThat(resultYtDlp.getNoProgress()).isFalse();
+        assertThat(resultYtDlp.getUseCookie()).isTrue();
     }
 
     @Test
@@ -717,6 +720,7 @@ class ConfigsServiceImplTest {
         assertThat(resultYtDlp.getAudioFormat()).isEqualTo(defaultYtDlp.getAudioFormat());
         assertThat(resultYtDlp.getAudioQuality()).isEqualTo(defaultYtDlp.getAudioQuality());
         assertThat(resultYtDlp.getNoProgress()).isEqualTo(defaultYtDlp.getNoProgress());
+        assertThat(resultYtDlp.getUseCookie()).isEqualTo(defaultYtDlp.getUseCookie());
     }
 
     @Test
@@ -763,6 +767,7 @@ class ConfigsServiceImplTest {
         ytDlpConfig.setAudioFormat("wav");
         ytDlpConfig.setAudioQuality(5);
         ytDlpConfig.setNoProgress(false);
+        ytDlpConfig.setUseCookie(true);
 
         fullConfig.setYtDlpConfig(ytDlpConfig);
 
@@ -794,6 +799,7 @@ class ConfigsServiceImplTest {
         assertThat(resultYtDlp.getAudioFormat()).isEqualTo("wav");
         assertThat(resultYtDlp.getAudioQuality()).isEqualTo(5);
         assertThat(resultYtDlp.getNoProgress()).isFalse();
+        assertThat(resultYtDlp.getUseCookie()).isTrue();
     }
 
     @Test

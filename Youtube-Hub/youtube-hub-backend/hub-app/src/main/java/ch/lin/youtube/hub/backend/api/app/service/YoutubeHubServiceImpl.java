@@ -214,9 +214,9 @@ public class YoutubeHubServiceImpl implements YoutubeHubService {
                             delayInMilliseconds);
                     String uploadsPlaylistId = channelDetails.get("uploadsPlaylistId");
                     String latestTitle = channelDetails.get("title");
-
+                    Objects.requireNonNull(latestTitle);
                     // Update channel title if it has changed on YouTube.
-                    if (latestTitle != null && !latestTitle.isBlank() && !channel.getTitle().equals(latestTitle)) {
+                    if (!latestTitle.isBlank() && !channel.getTitle().equals(latestTitle)) {
                         logger.info("  -> Channel title has changed from '{}' to '{}'. Updating.",
                                 channel.getTitle(),
                                 latestTitle);
@@ -440,41 +440,37 @@ public class YoutubeHubServiceImpl implements YoutubeHubService {
                 }
 
                 // After checking all items on the page, fetch full details for the new ones.
-                if (!newVideoSnippetsOnPage.isEmpty()) {
-                    List<Item> createdItems = fetchAndCreateItemsFromVideoIds(client, apiKey, newVideoSnippetsOnPage,
-                            delayInMilliseconds);
-                    try {
-                        for (Item newItem : createdItems) {
-                            playlist.addItem(newItem);
-                            result.newItemsCount++;
-                            switch (newItem.getLiveBroadcastContent()) {
-                                case NONE ->
-                                    result.standardVideoCount++;
-                                case UPCOMING ->
-                                    result.upcomingVideoCount++;
-                                case LIVE ->
-                                    result.liveVideoCount++;
-                                // No default case needed if all enum values are handled.
-                                // If new values are added to LiveBroadcastContent, the compiler will warn you.
-                            }
+                List<Item> createdItems = fetchAndCreateItemsFromVideoIds(client, apiKey, newVideoSnippetsOnPage,
+                        delayInMilliseconds);
+                try {
+                    for (Item newItem : createdItems) {
+                        playlist.addItem(newItem);
+                        result.newItemsCount++;
+                        switch (newItem.getLiveBroadcastContent()) {
+                            case NONE ->
+                                result.standardVideoCount++;
+                            case UPCOMING ->
+                                result.upcomingVideoCount++;
+                            case LIVE ->
+                                result.liveVideoCount++;
+                            // No default case needed if all enum values are handled.
+                            // If new values are added to LiveBroadcastContent, the compiler will warn you.
                         }
-                        if (createdItems != null) {
-                            itemRepository.saveAll(createdItems); // Explicitly save here for debugging
-                        }
-                    } catch (Exception e) {
-                        logger.error(
-                                "Failed to save a batch of items. This is often a character set issue (e.g., emoji in title). Please ensure DB uses utf8mb4.",
-                                e);
-                        // Optionally, you could try saving one-by-one here to isolate the bad item.
                     }
+                    if (!createdItems.isEmpty()) {
+                        itemRepository.saveAll(Objects.requireNonNull(createdItems)); // Explicitly save here for debugging
+                    }
+                } catch (Exception e) {
+                    logger.error(
+                            "Failed to save a batch of items. This is often a character set issue (e.g., emoji in title). Please ensure DB uses utf8mb4.",
+                            e);
+                    // Optionally, you could try saving one-by-one here to isolate the bad item.
                 }
 
                 // After checking all items on the page, fetch full details for existing ones
                 // to check for updates.
-                if (!existingItemsToUpdateOnPage.isEmpty()) {
-                    result.updatedItemsCount += updateExistingItems(client, apiKey, existingItemsToUpdateOnPage,
-                            delayInMilliseconds);
-                }
+                result.updatedItemsCount += updateExistingItems(client, apiKey, existingItemsToUpdateOnPage,
+                        delayInMilliseconds);
             } while (!stopFetching && nextPageToken != null);
 
             // After fetching all new items, update the playlist's processedAt timestamp
@@ -569,9 +565,8 @@ public class YoutubeHubServiceImpl implements YoutubeHubService {
                 JsonNode liveStreamingDetails = videoItemNode.path("liveStreamingDetails");
                 if (!liveStreamingDetails.isMissingNode() && liveStreamingDetails.has("scheduledStartTime")) {
                     String scheduledTimeStr = liveStreamingDetails.path("scheduledStartTime").asText(null);
-                    if (scheduledTimeStr != null) {
-                        newItem.setScheduledStartTime(OffsetDateTime.parse(scheduledTimeStr));
-                    }
+                    Objects.requireNonNull(scheduledTimeStr);
+                    newItem.setScheduledStartTime(OffsetDateTime.parse(scheduledTimeStr));
                 }
                 logger.info("    -> Creating new video: '{}' ({}) published at {} with status {}",
                         newItem.getTitle(), videoId, newItem.getVideoPublishedAt(), newItem.getLiveBroadcastContent());
@@ -889,9 +884,15 @@ public class YoutubeHubServiceImpl implements YoutubeHubService {
         // If 'v' param is not found, check for /shorts/ or /v/ or /embed/ paths.
         // Example: https://www.youtube.com/shorts/VIDEO_ID
         try {
-            String path = new java.net.URI(url).getPath();
-            return Arrays.stream(path.split("/")).reduce((first, second) -> second).orElse(null);
-        } catch (java.net.URISyntaxException e) {
+            URI uri = new URI(url);
+            String host = uri.getHost();
+            if (host != null && (host.equals("youtube.com") || host.endsWith(".youtube.com")
+                    || host.equals("youtu.be") || host.endsWith(".youtu.be"))) {
+                String path = uri.getPath();
+                return Arrays.stream(path.split("/")).reduce((first, second) -> second).orElse(null);
+            }
+            return null;
+        } catch (URISyntaxException e) {
             return null;
         }
     }
@@ -957,8 +958,8 @@ public class YoutubeHubServiceImpl implements YoutubeHubService {
                 List<DownloadInfo> newDownloadInfos = new ArrayList<>();
 
                 for (JsonNode taskIdentifierNode : dataNode) {
-                    String videoId = taskIdentifierNode.path("videoId").asText();
-                    String taskId = taskIdentifierNode.path("taskId").asText();
+                    String videoId = taskIdentifierNode.path("videoId").asText(null);
+                    String taskId = taskIdentifierNode.path("taskId").asText(null);
                     Item item = itemMap.get(videoId);
 
                     if (item != null && taskId != null && !taskId.isBlank()) {

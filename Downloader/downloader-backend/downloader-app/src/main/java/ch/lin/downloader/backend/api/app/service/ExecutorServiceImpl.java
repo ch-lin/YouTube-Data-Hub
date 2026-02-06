@@ -340,14 +340,20 @@ public class ExecutorServiceImpl implements ExecutorService {
         // for the output file inside this directory.
         List<String> command = new ArrayList<>();
         command.add("yt-dlp");
+        command.add("--js-runtimes");
+        command.add("node");
 
         YtDlpConfig ytDlpConfig = config.getYtDlpConfig();
 
         // Add cookie file if it exists
         Path cookiePath = Paths.get(defaultProperties.getNetscapeCookieFolder(), config.getName() + "-cookie.txt");
-        if (Boolean.TRUE.equals(ytDlpConfig.getUseCookie()) && Files.exists(cookiePath)) {
-            command.add("--cookies");
-            command.add(cookiePath.toString());
+        if (Boolean.TRUE.equals(ytDlpConfig.getUseCookie())) {
+            if (Files.exists(cookiePath)) {
+                command.add("--cookies");
+                command.add(cookiePath.toString());
+            } else {
+                logger.warn("Cookie usage enabled for config '{}', but cookie file not found at: {}", config.getName(), cookiePath);
+            }
         }
 
         if (StringUtils.hasText(ytDlpConfig.getFormatFiltering())) {
@@ -485,7 +491,7 @@ public class ExecutorServiceImpl implements ExecutorService {
             logger.info("yt-dlp process for {} exited with code {}. Duration: {} ms", task.getVideoId(), exitCode, duration);
 
             String downloadedFile = finalFilename.get();
-            if (exitCode == 0 || (exitCode == 1 && downloadedFile != null && !result.getWarnings().isEmpty())) {
+            if (exitCode == 0 || (exitCode == 1 && downloadedFile != null)) {
                 result.setSuccess(true);
                 if (StringUtils.hasText(downloadedFile)) {
                     Path path = videoDirectory.resolve(downloadedFile);
@@ -587,7 +593,12 @@ public class ExecutorServiceImpl implements ExecutorService {
      */
     private boolean videoHasSubtitles(String videoUrl) {
         logger.info("Checking for subtitles for video: {}", videoUrl);
-        List<String> command = Arrays.asList("yt-dlp", "--list-subs", videoUrl);
+        List<String> command = new ArrayList<>();
+        command.add("yt-dlp");
+        command.add("--js-runtimes");
+        command.add("node");
+        command.add("--list-subs");
+        command.add(videoUrl);
 
         try {
             Process process = startProcess(command, null);

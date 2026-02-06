@@ -46,6 +46,7 @@ class PlaylistTest {
     private Channel channel;
 
     @BeforeEach
+    @SuppressWarnings("unused")
     void setUp() {
         playlistId = "PL_x5XG1OV2P6uZZ5FSM9Ttw";
         title = "Google for Developers Playlist";
