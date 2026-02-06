@@ -51,6 +51,7 @@ class ItemTest {
     private Tag tag;
 
     @BeforeEach
+    @SuppressWarnings("unused")
     void setUp() {
         videoId = "videoId123";
         title = "Test Video";

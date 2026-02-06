@@ -78,4 +78,19 @@ class SecurityConfigTest {
                     assertThat(context).hasSingleBean(SecurityFilterChain.class);
                 });
     }
+
+    @Test
+    void shouldEnableSecurityWithPublicSwagger() {
+        contextRunner
+                .withPropertyValues(
+                        "app.security.enabled=true",
+                        "app.security.swagger-public=true",
+                        "spring.security.oauth2.resourceserver.jwt.issuer-uri=https://example.com"
+                )
+                .run(context -> {
+                    assertThat(context).hasBean("enabledSecurityFilterChain");
+                    assertThat(context).doesNotHaveBean("disabledSecurityFilterChain");
+                    assertThat(context).hasSingleBean(SecurityFilterChain.class);
+                });
+    }
 }

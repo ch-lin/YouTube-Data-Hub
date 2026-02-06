@@ -31,14 +31,14 @@ class DownloadItemTest {
     @Test
     void testGettersAndSetters() {
         DownloadItem item = new DownloadItem();
-        item.setVideoId("vid-123");
-        item.setTitle("Funny Cat Video");
+        item.setVideoId("dQw4w9WgXcQ");
+        item.setTitle("Never Gonna Give You Up");
         item.setThumbnailUrl("http://example.com/thumb.jpg");
-        item.setDescription("A video about cats");
+        item.setDescription("Best video ever");
 
-        assertThat(item.getVideoId()).isEqualTo("vid-123");
-        assertThat(item.getTitle()).isEqualTo("Funny Cat Video");
+        assertThat(item.getVideoId()).isEqualTo("dQw4w9WgXcQ");
+        assertThat(item.getTitle()).isEqualTo("Never Gonna Give You Up");
         assertThat(item.getThumbnailUrl()).isEqualTo("http://example.com/thumb.jpg");
-        assertThat(item.getDescription()).isEqualTo("A video about cats");
+        assertThat(item.getDescription()).isEqualTo("Best video ever");
     }
 }

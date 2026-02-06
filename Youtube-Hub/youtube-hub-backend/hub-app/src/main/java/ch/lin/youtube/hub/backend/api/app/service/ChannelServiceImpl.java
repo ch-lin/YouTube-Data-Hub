@@ -7,6 +7,7 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -309,10 +310,7 @@ public class ChannelServiceImpl implements ChannelService {
                     return existingChannel;
                 })
                 .orElse(channel);
-        if (channelToSave != null) {
-            return channelRepository.save(channelToSave);
-        }
-        throw new ChannelNotFoundException("Channel with id " + channel.getChannelId() + " not found.");
+        return channelRepository.save(Objects.requireNonNull(channelToSave));
     }
 
     /**
@@ -331,9 +329,7 @@ public class ChannelServiceImpl implements ChannelService {
         }
         Channel channelToDelete = channelRepository.findByChannelId(channelId)
                 .orElseThrow(() -> new ChannelNotFoundException("Channel with id " + channelId + " not found."));
-        if (channelToDelete != null) {
-            channelRepository.delete(channelToDelete);
-        }
+        channelRepository.delete(Objects.requireNonNull(channelToDelete));
     }
 
 }

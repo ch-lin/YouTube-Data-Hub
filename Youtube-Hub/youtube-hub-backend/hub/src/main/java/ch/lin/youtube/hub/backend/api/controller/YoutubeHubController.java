@@ -40,8 +40,6 @@ import org.springframework.web.bind.annotation.RestController;
 import ch.lin.platform.api.ApiResponse;
 import ch.lin.youtube.hub.backend.api.app.service.YoutubeHubService;
 import ch.lin.youtube.hub.backend.api.dto.DownloadItemsRequest;
-import ch.lin.youtube.hub.backend.api.dto.LoginRequest;
-import ch.lin.youtube.hub.backend.api.dto.LoginResponse;
 import ch.lin.youtube.hub.backend.api.dto.MarkAllDoneRequest;
 import ch.lin.youtube.hub.backend.api.dto.ProcessRequest;
 import ch.lin.youtube.hub.backend.api.dto.VerifyItemsRequest;
@@ -63,37 +61,6 @@ public class YoutubeHubController {
 
     public YoutubeHubController(YoutubeHubService youtubeHubService) {
         this.youtubeHubService = youtubeHubService;
-    }
-
-    /**
-     * Authenticates a user based on username and password.
-     *
-     * @param loginRequest The request body containing the username and
-     * password.
-     * @return A {@link ResponseEntity} with a dummy token on success, or a 401
-     * Unauthorized status on failure.
-     * <p>
-     * Example cURL request:
-     *
-     * <pre>
-     * {@code
-     * curl -X POST http://localhost:8080/tasks/login \
-     * -H "Content-Type: application/json" \
-     * -d '{
-     *   "username": "edward",
-     *   "password": "HSMGu2HqW9BnFoWg8ZKRoX8Qm5oEr4GL"
-     * }'
-     * }
-     * </pre>
-     */
-    @PostMapping(value = "/login", consumes = MediaType.APPLICATION_JSON_VALUE, produces = MediaType.APPLICATION_JSON_VALUE)
-    public ResponseEntity<LoginResponse> login(@Valid @RequestBody final LoginRequest loginRequest) {
-        if ("edward".equals(loginRequest.getUsername())
-                && "HSMGu2HqW9BnFoWg8ZKRoX8Qm5oEr4GL".equals(loginRequest.getPassword())) {
-            // In a real application, you would generate a JWT here.
-            return ResponseEntity.ok(new LoginResponse("dummy-token"));
-        }
-        return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
     }
 
     /**
