@@ -32,6 +32,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
@@ -54,8 +55,10 @@ import static org.mockito.ArgumentMatchers.contains;
 import static org.mockito.ArgumentMatchers.eq;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
+import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.timeout;
@@ -63,6 +66,7 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.mockito.Mockito.withSettings;
+import org.mockito.invocation.InvocationOnMock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.scheduling.TaskScheduler;
 
@@ -713,6 +717,8 @@ class ExecutorServiceImplTest {
                 .useConstructor(downloadTaskRepository, downloadJobRepository, defaultProperties, configsService, apiClientService, taskScheduler)
                 .defaultAnswer(CALLS_REAL_METHODS));
 
+        injectSynchronousExecutor(spyService);
+
         // Mock Processes
         Process updateProcess = mock(Process.class);
         when(updateProcess.getInputStream()).thenReturn(new ByteArrayInputStream("".getBytes()));
@@ -1068,6 +1074,1411 @@ class ExecutorServiceImplTest {
         verify(downloadTaskRepository, times(2)).save(argThat(t
                 -> t.getStatus() == TaskStatus.FAILED && t.getErrorMessage().contains("interrupted")
         ));
+    }
+
+    @Test
+    void processPendingTasks_ShouldLogWarning_WhenCookieFileMissing(@TempDir Path tempDir) throws Exception {
+        // Setup Job and Task
+        DownloadJob job = new DownloadJob();
+        job.setId("job-cookie-missing");
+        job.setConfigName("cookie-config");
+        DownloadTask task = new DownloadTask();
+        task.setId("task-cookie-missing");
+        task.setVideoId("vid-cookie-missing");
+        task.setTitle("Cookie Missing Video");
+        task.setJob(job);
+        job.setTasks(List.of(task));
+
+        // Setup Config
+        DownloaderConfig config = new DownloaderConfig();
+        config.setName("cookie-config");
+        YtDlpConfig ytDlp = new YtDlpConfig();
+        ytDlp.setUseCookie(true);
+        config.setYtDlpConfig(ytDlp);
+
+        // Mocks
+        when(downloadTaskRepository.findAllByStatusWithJob(TaskStatus.PENDING)).thenReturn(List.of(task));
+        when(configsService.getResolvedConfig("cookie-config")).thenReturn(config);
+        when(configsService.getResolvedConfig(null)).thenReturn(config);
+
+        when(defaultProperties.getDownloadFolder()).thenReturn(tempDir.toString());
+        when(defaultProperties.getNetscapeCookieFolder()).thenReturn(tempDir.toString());
+        when(downloadJobRepository.findByIdWithTasks("job-cookie-missing")).thenReturn(Optional.of(job));
+
+        // Spy
+        ExecutorServiceImpl spyService = mock(ExecutorServiceImpl.class, withSettings()
+                .useConstructor(downloadTaskRepository, downloadJobRepository, defaultProperties, configsService, apiClientService, taskScheduler)
+                .defaultAnswer(CALLS_REAL_METHODS));
+
+        injectSynchronousExecutor(spyService);
+
+        // Mock Processes
+        Process updateProcess = mock(Process.class);
+        when(updateProcess.getInputStream()).thenReturn(new ByteArrayInputStream("".getBytes()));
+        when(updateProcess.waitFor()).thenReturn(0);
+
+        Process downloadProcess = mock(Process.class);
+        when(downloadProcess.getInputStream()).thenReturn(new ByteArrayInputStream("".getBytes()));
+        when(downloadProcess.waitFor()).thenReturn(0);
+
+        // Mock startProcess
+        doReturn(updateProcess).when(spyService).startProcess(argThat(list -> list.contains("-U")), any());
+        doReturn(downloadProcess).when(spyService).startProcess(argThat(list -> list.contains("https://www.youtube.com/watch?v=vid-cookie-missing")), any());
+
+        // Execute
+        spyService.processPendingTasks();
+
+        // Verify
+        verify(downloadTaskRepository, timeout(5000).atLeastOnce()).save(argThat(t -> t.getStatus() == TaskStatus.DOWNLOADED));
+
+        // Verify that --cookies was NOT added because the file was missing
+        verify(spyService).startProcess(argThat(list
+                -> !list.contains("--cookies") && !list.contains("-U")
+        ), any());
+    }
+
+    @Test
+    void processPendingTasks_ShouldParseOutput_WhenNoProgressEnabled(@TempDir Path tempDir) throws Exception {
+        // Setup Job and Task
+        DownloadJob job = new DownloadJob();
+        job.setId("job-no-progress");
+        job.setConfigName("no-progress-config");
+        DownloadTask task = new DownloadTask();
+        task.setId("task-no-progress");
+        task.setVideoId("vid-no-progress");
+        task.setTitle("No Progress Video");
+        task.setJob(job);
+        job.setTasks(List.of(task));
+
+        // Setup Config
+        DownloaderConfig config = new DownloaderConfig();
+        config.setName("no-progress-config");
+        YtDlpConfig ytDlp = new YtDlpConfig();
+        ytDlp.setNoProgress(true);
+        config.setYtDlpConfig(ytDlp);
+
+        // Mocks
+        when(downloadTaskRepository.findAllByStatusWithJob(TaskStatus.PENDING)).thenReturn(List.of(task));
+        when(configsService.getResolvedConfig("no-progress-config")).thenReturn(config);
+        when(configsService.getResolvedConfig(null)).thenReturn(config);
+
+        when(defaultProperties.getDownloadFolder()).thenReturn(tempDir.toString());
+        when(defaultProperties.getNetscapeCookieFolder()).thenReturn(tempDir.toString());
+        when(downloadJobRepository.findByIdWithTasks("job-no-progress")).thenReturn(Optional.of(job));
+
+        // Spy
+        ExecutorServiceImpl spyService = mock(ExecutorServiceImpl.class, withSettings()
+                .useConstructor(downloadTaskRepository, downloadJobRepository, defaultProperties, configsService, apiClientService, taskScheduler)
+                .defaultAnswer(CALLS_REAL_METHODS));
+
+        injectSynchronousExecutor(spyService);
+
+        // Mock Processes
+        Process updateProcess = mock(Process.class);
+        when(updateProcess.getInputStream()).thenReturn(new ByteArrayInputStream("".getBytes()));
+        when(updateProcess.waitFor()).thenReturn(0);
+
+        Process downloadProcess = mock(Process.class);
+        // Provide output to exercise the loop in the noProgress block
+        String output = "[download] Destination: video_no_progress.mp4\nSome other line";
+        when(downloadProcess.getInputStream()).thenReturn(new ByteArrayInputStream(output.getBytes(StandardCharsets.UTF_8)));
+        when(downloadProcess.waitFor()).thenReturn(0);
+
+        // Mock startProcess
+        doReturn(updateProcess).when(spyService).startProcess(argThat(list -> list.contains("-U")), any());
+        doReturn(downloadProcess).when(spyService).startProcess(argThat(list -> !list.contains("-U")), any());
+
+        // Create dummy file so download is considered successful
+        Path videoDir = tempDir.resolve("No Progress Video [vid-no-progress]");
+        Files.createDirectories(videoDir);
+        Files.createFile(videoDir.resolve("video_no_progress.mp4"));
+
+        // Execute
+        spyService.processPendingTasks();
+
+        // Verify
+        verify(downloadTaskRepository, timeout(5000).atLeastOnce()).save(argThat(t -> t.getStatus() == TaskStatus.DOWNLOADED));
+
+        // Verify that the file path was correctly parsed from the output
+        verify(downloadTaskRepository, atLeastOnce()).save(argThat(t
+                -> t.getStatus() == TaskStatus.DOWNLOADED
+                && t.getFilePath() != null
+                && t.getFilePath().endsWith("video_no_progress.mp4")
+        ));
+    }
+
+    @Test
+    void processPendingTasks_ShouldHandleBufferReading_WithCR_AndEmptyLines(@TempDir Path tempDir) throws Exception {
+        // Setup
+        DownloadJob job = new DownloadJob();
+        job.setId("job-buffer");
+        job.setConfigName("default");
+        DownloadTask task = new DownloadTask();
+        task.setId("task-buffer");
+        task.setVideoId("vid-buffer");
+        task.setTitle("Buffer Video");
+        task.setJob(job);
+        job.setTasks(List.of(task));
+
+        DownloaderConfig config = new DownloaderConfig();
+        config.setName("default");
+        config.setYtDlpConfig(new YtDlpConfig()); // noProgress is false by default
+
+        when(downloadTaskRepository.findAllByStatusWithJob(TaskStatus.PENDING)).thenReturn(List.of(task));
+        when(configsService.getResolvedConfig("default")).thenReturn(config);
+        when(configsService.getResolvedConfig(null)).thenReturn(config);
+        when(defaultProperties.getDownloadFolder()).thenReturn(tempDir.toString());
+        when(defaultProperties.getNetscapeCookieFolder()).thenReturn(tempDir.toString());
+        when(downloadJobRepository.findByIdWithTasks("job-buffer")).thenReturn(Optional.of(job));
+
+        ExecutorServiceImpl spyService = mock(ExecutorServiceImpl.class, withSettings()
+                .useConstructor(downloadTaskRepository, downloadJobRepository, defaultProperties, configsService, apiClientService, taskScheduler)
+                .defaultAnswer(CALLS_REAL_METHODS));
+
+        injectSynchronousExecutor(spyService);
+
+        Process updateProcess = mock(Process.class);
+        when(updateProcess.getInputStream()).thenReturn(new ByteArrayInputStream("".getBytes()));
+        when(updateProcess.waitFor()).thenReturn(0);
+
+        Process downloadProcess = mock(Process.class);
+        // "Progress 10%\r" -> covers \r
+        // "[download] Destination: video.mp4\n" -> covers \n and sets filename
+        // "\n" -> covers empty line (length > 0 check)
+        // "[download] 100%\n" -> covers normal line
+        String output = "[download] 10% of 10MB\r[download] Destination: video.mp4\n\n[download] 100% of 10MB\n";
+        when(downloadProcess.getInputStream()).thenReturn(new ByteArrayInputStream(output.getBytes(StandardCharsets.UTF_8)));
+        when(downloadProcess.waitFor()).thenReturn(0);
+
+        doReturn(updateProcess).when(spyService).startProcess(argThat(list -> list.contains("-U")), any());
+        doReturn(downloadProcess).when(spyService).startProcess(argThat(list -> !list.contains("-U")), any());
+
+        // Create dummy file
+        Path videoDir = tempDir.resolve("Buffer Video [vid-buffer]");
+        Files.createDirectories(videoDir);
+        Files.createFile(videoDir.resolve("video.mp4"));
+
+        spyService.processPendingTasks();
+
+        // Verify success
+        verify(downloadTaskRepository, atLeastOnce()).save(argThat(t -> t.getStatus() == TaskStatus.DOWNLOADED));
+        // Verify filename was parsed correctly from the line following \r
+        verify(downloadTaskRepository, atLeastOnce()).save(argThat(t
+                -> t.getStatus() == TaskStatus.DOWNLOADED
+                && t.getFilePath() != null
+                && t.getFilePath().endsWith("video.mp4")
+        ));
+    }
+
+    @Test
+    void processPendingTasks_ShouldSucceed_WhenExitCode1_AndFileFound(@TempDir Path tempDir) throws Exception {
+        // Setup
+        DownloadJob job = new DownloadJob();
+        job.setId("job-exit1");
+        job.setConfigName("default");
+        DownloadTask task = new DownloadTask();
+        task.setId("task-exit1");
+        task.setVideoId("vid-exit1");
+        task.setTitle("Exit1 Video");
+        task.setJob(job);
+        job.setTasks(List.of(task));
+
+        DownloaderConfig config = new DownloaderConfig();
+        config.setName("default");
+        config.setYtDlpConfig(new YtDlpConfig());
+
+        when(downloadTaskRepository.findAllByStatusWithJob(TaskStatus.PENDING)).thenReturn(List.of(task));
+        when(configsService.getResolvedConfig("default")).thenReturn(config);
+        when(configsService.getResolvedConfig(null)).thenReturn(config);
+        when(defaultProperties.getDownloadFolder()).thenReturn(tempDir.toString());
+        when(defaultProperties.getNetscapeCookieFolder()).thenReturn(tempDir.toString());
+        when(downloadJobRepository.findByIdWithTasks("job-exit1")).thenReturn(Optional.of(job));
+
+        ExecutorServiceImpl spyService = mock(ExecutorServiceImpl.class, withSettings()
+                .useConstructor(downloadTaskRepository, downloadJobRepository, defaultProperties, configsService, apiClientService, taskScheduler)
+                .defaultAnswer(CALLS_REAL_METHODS));
+
+        injectSynchronousExecutor(spyService);
+
+        Process updateProcess = mock(Process.class);
+        when(updateProcess.getInputStream()).thenReturn(new ByteArrayInputStream("".getBytes()));
+        when(updateProcess.waitFor()).thenReturn(0);
+
+        Process downloadProcess = mock(Process.class);
+        // Output provides a filename, so downloadedFile != null
+        String output = "[download] Destination: video_exit1.mp4\n";
+        when(downloadProcess.getInputStream()).thenReturn(new ByteArrayInputStream(output.getBytes(StandardCharsets.UTF_8)));
+        when(downloadProcess.waitFor()).thenReturn(1); // Exit code 1
+
+        doReturn(updateProcess).when(spyService).startProcess(argThat(list -> list.contains("-U")), any());
+        doReturn(downloadProcess).when(spyService).startProcess(argThat(list -> !list.contains("-U")), any());
+
+        // Create dummy file so it is considered a valid download
+        Path videoDir = tempDir.resolve("Exit1 Video [vid-exit1]");
+        Files.createDirectories(videoDir);
+        Files.createFile(videoDir.resolve("video_exit1.mp4"));
+
+        spyService.processPendingTasks();
+
+        // Verify success
+        verify(downloadTaskRepository, atLeastOnce()).save(argThat(t -> t.getStatus() == TaskStatus.DOWNLOADED));
+    }
+
+    @Test
+    void processPendingTasks_ShouldFail_WhenExitCodeIsTwo(@TempDir Path tempDir) throws Exception {
+        // Setup
+        DownloadJob job = new DownloadJob();
+        job.setId("job-exit2");
+        job.setConfigName("default");
+        DownloadTask task = new DownloadTask();
+        task.setId("task-exit2");
+        task.setVideoId("vid-exit2");
+        task.setTitle("Exit2 Video");
+        task.setJob(job);
+        job.setTasks(List.of(task));
+
+        DownloaderConfig config = new DownloaderConfig();
+        config.setName("default");
+        config.setYtDlpConfig(new YtDlpConfig());
+
+        when(downloadTaskRepository.findAllByStatusWithJob(TaskStatus.PENDING)).thenReturn(List.of(task));
+        when(configsService.getResolvedConfig("default")).thenReturn(config);
+        when(configsService.getResolvedConfig(null)).thenReturn(config);
+        when(defaultProperties.getDownloadFolder()).thenReturn(tempDir.toString());
+        when(defaultProperties.getNetscapeCookieFolder()).thenReturn(tempDir.toString());
+        when(downloadJobRepository.findByIdWithTasks("job-exit2")).thenReturn(Optional.of(job));
+
+        ExecutorServiceImpl spyService = mock(ExecutorServiceImpl.class, withSettings()
+                .useConstructor(downloadTaskRepository, downloadJobRepository, defaultProperties, configsService, apiClientService, taskScheduler)
+                .defaultAnswer(CALLS_REAL_METHODS));
+
+        injectSynchronousExecutor(spyService);
+
+        Process updateProcess = mock(Process.class);
+        when(updateProcess.getInputStream()).thenReturn(new ByteArrayInputStream("".getBytes()));
+        when(updateProcess.waitFor()).thenReturn(0);
+
+        Process downloadProcess = mock(Process.class);
+        when(downloadProcess.getInputStream()).thenReturn(new ByteArrayInputStream("ERROR: Generic error\n".getBytes()));
+        when(downloadProcess.waitFor()).thenReturn(2); // Exit code 2
+
+        doReturn(updateProcess).when(spyService).startProcess(argThat(list -> list.contains("-U")), any());
+        doReturn(downloadProcess).when(spyService).startProcess(argThat(list -> !list.contains("-U")), any());
+
+        spyService.processPendingTasks();
+
+        // Verify failure
+        verify(downloadTaskRepository, atLeastOnce()).save(argThat(t -> t.getStatus() == TaskStatus.FAILED));
+    }
+
+    @Test
+    void startProcess_ShouldCreateDirectory_WhenDirectoryProvided(@TempDir Path tempDir) {
+        Path targetDir = tempDir.resolve("subdir");
+        // Use a command that is unlikely to exist to fail fast, but directory creation happens before start()
+        List<String> command = List.of("non-existent-command-12345");
+
+        try {
+            executorService.startProcess(command, targetDir);
+        } catch (IOException e) {
+            // Expected exception due to non-existent command
+        }
+
+        assertThat(Files.exists(targetDir)).isTrue();
+    }
+
+    @Test
+    void processPendingTasks_ShouldUseFallbackErrorMessage_WhenNoErrorLinesFound(@TempDir Path tempDir) throws Exception {
+        // Setup
+        DownloadJob job = new DownloadJob();
+        job.setId("job-fallback-error");
+        job.setConfigName("default");
+        DownloadTask task = new DownloadTask();
+        task.setId("task-fallback-error");
+        task.setVideoId("vid-fallback-error");
+        task.setTitle("Fallback Error Video");
+        task.setJob(job);
+        job.setTasks(List.of(task));
+
+        DownloaderConfig config = new DownloaderConfig();
+        config.setName("default");
+        config.setYtDlpConfig(new YtDlpConfig());
+
+        when(downloadTaskRepository.findAllByStatusWithJob(TaskStatus.PENDING)).thenReturn(List.of(task));
+        when(configsService.getResolvedConfig("default")).thenReturn(config);
+        when(configsService.getResolvedConfig(null)).thenReturn(config);
+        when(defaultProperties.getDownloadFolder()).thenReturn(tempDir.toString());
+        when(defaultProperties.getNetscapeCookieFolder()).thenReturn(tempDir.toString());
+        when(downloadJobRepository.findByIdWithTasks("job-fallback-error")).thenReturn(Optional.of(job));
+
+        ExecutorServiceImpl spyService = mock(ExecutorServiceImpl.class, withSettings()
+                .useConstructor(downloadTaskRepository, downloadJobRepository, defaultProperties, configsService, apiClientService, taskScheduler)
+                .defaultAnswer(CALLS_REAL_METHODS));
+
+        injectSynchronousExecutor(spyService);
+
+        Process updateProcess = mock(Process.class);
+        when(updateProcess.getInputStream()).thenReturn(new ByteArrayInputStream("".getBytes()));
+        when(updateProcess.waitFor()).thenReturn(0);
+
+        Process downloadProcess = mock(Process.class);
+        // Output does NOT contain "ERROR:"
+        String output = "Some generic output\nWARNING: something\n";
+        when(downloadProcess.getInputStream()).thenReturn(new ByteArrayInputStream(output.getBytes(StandardCharsets.UTF_8)));
+        when(downloadProcess.waitFor()).thenReturn(1); // Exit code 1
+
+        doReturn(updateProcess).when(spyService).startProcess(argThat(list -> list.contains("-U")), any());
+        doReturn(downloadProcess).when(spyService).startProcess(argThat(list -> !list.contains("-U")), any());
+
+        spyService.processPendingTasks();
+
+        // Verify failure with fallback message
+        verify(downloadTaskRepository, atLeastOnce()).save(argThat(t
+                -> t.getStatus() == TaskStatus.FAILED
+                && t.getErrorMessage().contains("yt-dlp process failed with exit code 1")
+        ));
+    }
+
+    @Test
+    void processPendingTasks_ShouldHandleSubtitlesCheck_WhenExitCodeNonZero(@TempDir Path tempDir) throws Exception {
+        // Setup
+        DownloadJob job = new DownloadJob();
+        job.setId("job-subs-fail");
+        job.setConfigName("subs-config");
+        DownloadTask task = new DownloadTask();
+        task.setId("task-subs-fail");
+        task.setVideoId("vid-subs-fail");
+        task.setTitle("Subs Fail Video");
+        task.setJob(job);
+        job.setTasks(List.of(task));
+
+        DownloaderConfig config = new DownloaderConfig();
+        config.setName("subs-config");
+        YtDlpConfig ytDlp = new YtDlpConfig();
+        ytDlp.setWriteSubs(true);
+        config.setYtDlpConfig(ytDlp);
+
+        when(downloadTaskRepository.findAllByStatusWithJob(TaskStatus.PENDING)).thenReturn(List.of(task));
+        when(configsService.getResolvedConfig("subs-config")).thenReturn(config);
+        when(configsService.getResolvedConfig(null)).thenReturn(config);
+        when(defaultProperties.getDownloadFolder()).thenReturn(tempDir.toString());
+        when(defaultProperties.getNetscapeCookieFolder()).thenReturn(tempDir.toString());
+        when(downloadJobRepository.findByIdWithTasks("job-subs-fail")).thenReturn(Optional.of(job));
+
+        ExecutorServiceImpl spyService = mock(ExecutorServiceImpl.class, withSettings()
+                .useConstructor(downloadTaskRepository, downloadJobRepository, defaultProperties, configsService, apiClientService, taskScheduler)
+                .defaultAnswer(CALLS_REAL_METHODS));
+
+        injectSynchronousExecutor(spyService);
+
+        Process updateProcess = mock(Process.class);
+        when(updateProcess.getInputStream()).thenReturn(new ByteArrayInputStream("".getBytes()));
+        when(updateProcess.waitFor()).thenReturn(0);
+
+        Process listSubsProcess = mock(Process.class);
+        // Output does not contain "has no subtitles"
+        when(listSubsProcess.getInputStream()).thenReturn(new ByteArrayInputStream("some output".getBytes()));
+        when(listSubsProcess.waitFor()).thenReturn(1); // Non-zero exit code
+
+        Process downloadProcess = mock(Process.class);
+        when(downloadProcess.getInputStream()).thenReturn(new ByteArrayInputStream("".getBytes()));
+        when(downloadProcess.waitFor()).thenReturn(0);
+
+        doReturn(updateProcess).when(spyService).startProcess(argThat(list -> list.contains("-U")), any());
+        doReturn(listSubsProcess).when(spyService).startProcess(argThat(list -> list.contains("--list-subs")), any());
+        doReturn(downloadProcess).when(spyService).startProcess(argThat(list -> !list.contains("-U") && !list.contains("--list-subs")), any());
+
+        spyService.processPendingTasks();
+
+        // Verify that --write-subs was NOT added because check failed
+        verify(spyService).startProcess(argThat(list
+                -> !list.contains("--write-subs") && !list.contains("-U") && !list.contains("--list-subs")
+        ), any());
+    }
+
+    @Test
+    void processPendingTasks_ShouldHandleSubtitlesCheck_Exception(@TempDir Path tempDir) throws Exception {
+        // Setup
+        DownloadJob job = new DownloadJob();
+        job.setId("job-subs-ex");
+        job.setConfigName("subs-config");
+        DownloadTask task = new DownloadTask();
+        task.setId("task-subs-ex");
+        task.setVideoId("vid-subs-ex");
+        task.setTitle("Subs Ex Video");
+        task.setJob(job);
+        job.setTasks(List.of(task));
+
+        DownloaderConfig config = new DownloaderConfig();
+        config.setName("subs-config");
+        YtDlpConfig ytDlp = new YtDlpConfig();
+        ytDlp.setWriteSubs(true);
+        config.setYtDlpConfig(ytDlp);
+
+        when(downloadTaskRepository.findAllByStatusWithJob(TaskStatus.PENDING)).thenReturn(List.of(task));
+        when(configsService.getResolvedConfig("subs-config")).thenReturn(config);
+        when(configsService.getResolvedConfig(null)).thenReturn(config);
+        when(defaultProperties.getDownloadFolder()).thenReturn(tempDir.toString());
+        when(defaultProperties.getNetscapeCookieFolder()).thenReturn(tempDir.toString());
+        when(downloadJobRepository.findByIdWithTasks("job-subs-ex")).thenReturn(Optional.of(job));
+
+        ExecutorServiceImpl spyService = mock(ExecutorServiceImpl.class, withSettings()
+                .useConstructor(downloadTaskRepository, downloadJobRepository, defaultProperties, configsService, apiClientService, taskScheduler)
+                .defaultAnswer(CALLS_REAL_METHODS));
+
+        injectSynchronousExecutor(spyService);
+
+        Process updateProcess = mock(Process.class);
+        when(updateProcess.getInputStream()).thenReturn(new ByteArrayInputStream("".getBytes()));
+        when(updateProcess.waitFor()).thenReturn(0);
+
+        Process downloadProcess = mock(Process.class);
+        when(downloadProcess.getInputStream()).thenReturn(new ByteArrayInputStream("".getBytes()));
+        when(downloadProcess.waitFor()).thenReturn(0);
+
+        doReturn(updateProcess).when(spyService).startProcess(argThat(list -> list.contains("-U")), any());
+        // Throw exception when starting list-subs process
+        doThrow(new IOException("Simulated IO Error")).when(spyService).startProcess(argThat(list -> list.contains("--list-subs")), any());
+        doReturn(downloadProcess).when(spyService).startProcess(argThat(list -> !list.contains("-U") && !list.contains("--list-subs")), any());
+
+        spyService.processPendingTasks();
+
+        // Verify that --write-subs was NOT added because check failed
+        verify(spyService).startProcess(argThat(list
+                -> !list.contains("--write-subs") && !list.contains("-U") && !list.contains("--list-subs")
+        ), any());
+    }
+
+    @Test
+    void processPendingTasks_ShouldParseMergerOutput(@TempDir Path tempDir) throws Exception {
+        // Setup
+        DownloadJob job = new DownloadJob();
+        job.setId("job-merger");
+        job.setConfigName("default");
+        DownloadTask task = new DownloadTask();
+        task.setId("task-merger");
+        task.setVideoId("vid-merger");
+        task.setTitle("Merger Video");
+        task.setJob(job);
+        job.setTasks(List.of(task));
+
+        DownloaderConfig config = new DownloaderConfig();
+        config.setName("default");
+        config.setYtDlpConfig(new YtDlpConfig());
+
+        when(downloadTaskRepository.findAllByStatusWithJob(TaskStatus.PENDING)).thenReturn(List.of(task));
+        when(configsService.getResolvedConfig("default")).thenReturn(config);
+        when(configsService.getResolvedConfig(null)).thenReturn(config);
+        when(defaultProperties.getDownloadFolder()).thenReturn(tempDir.toString());
+        when(defaultProperties.getNetscapeCookieFolder()).thenReturn(tempDir.toString());
+        when(downloadJobRepository.findByIdWithTasks("job-merger")).thenReturn(Optional.of(job));
+
+        ExecutorServiceImpl spyService = mock(ExecutorServiceImpl.class, withSettings()
+                .useConstructor(downloadTaskRepository, downloadJobRepository, defaultProperties, configsService, apiClientService, taskScheduler)
+                .defaultAnswer(CALLS_REAL_METHODS));
+
+        injectSynchronousExecutor(spyService);
+
+        Process updateProcess = mock(Process.class);
+        when(updateProcess.getInputStream()).thenReturn(new ByteArrayInputStream("".getBytes()));
+        when(updateProcess.waitFor()).thenReturn(0);
+
+        Process downloadProcess = mock(Process.class);
+        String output = "[Merger] Merging formats into \"merged_video.mkv\"\n";
+        when(downloadProcess.getInputStream()).thenReturn(new ByteArrayInputStream(output.getBytes(StandardCharsets.UTF_8)));
+        when(downloadProcess.waitFor()).thenReturn(0);
+
+        doReturn(updateProcess).when(spyService).startProcess(argThat(list -> list.contains("-U")), any());
+        doReturn(downloadProcess).when(spyService).startProcess(argThat(list -> !list.contains("-U")), any());
+
+        // Create dummy file
+        Path videoDir = tempDir.resolve("Merger Video [vid-merger]");
+        Files.createDirectories(videoDir);
+        Files.createFile(videoDir.resolve("merged_video.mkv"));
+
+        spyService.processPendingTasks();
+
+        verify(downloadTaskRepository, atLeastOnce()).save(argThat(t
+                -> t.getStatus() == TaskStatus.DOWNLOADED
+                && t.getFilePath() != null
+                && t.getFilePath().endsWith("merged_video.mkv")
+        ));
+    }
+
+    @Test
+    void processPendingTasks_ShouldParseAlreadyDownloadedOutput(@TempDir Path tempDir) throws Exception {
+        // Setup
+        DownloadJob job = new DownloadJob();
+        job.setId("job-already");
+        job.setConfigName("default");
+        DownloadTask task = new DownloadTask();
+        task.setId("task-already");
+        task.setVideoId("vid-already");
+        task.setTitle("Already Video");
+        task.setJob(job);
+        job.setTasks(List.of(task));
+
+        DownloaderConfig config = new DownloaderConfig();
+        config.setName("default");
+        config.setYtDlpConfig(new YtDlpConfig());
+
+        when(downloadTaskRepository.findAllByStatusWithJob(TaskStatus.PENDING)).thenReturn(List.of(task));
+        when(configsService.getResolvedConfig("default")).thenReturn(config);
+        when(configsService.getResolvedConfig(null)).thenReturn(config);
+        when(defaultProperties.getDownloadFolder()).thenReturn(tempDir.toString());
+        when(defaultProperties.getNetscapeCookieFolder()).thenReturn(tempDir.toString());
+        when(downloadJobRepository.findByIdWithTasks("job-already")).thenReturn(Optional.of(job));
+
+        ExecutorServiceImpl spyService = mock(ExecutorServiceImpl.class, withSettings()
+                .useConstructor(downloadTaskRepository, downloadJobRepository, defaultProperties, configsService, apiClientService, taskScheduler)
+                .defaultAnswer(CALLS_REAL_METHODS));
+
+        injectSynchronousExecutor(spyService);
+
+        Process updateProcess = mock(Process.class);
+        when(updateProcess.getInputStream()).thenReturn(new ByteArrayInputStream("".getBytes()));
+        when(updateProcess.waitFor()).thenReturn(0);
+
+        Process downloadProcess = mock(Process.class);
+        String output = "[download] existing_video.mp4 has already been downloaded\n";
+        when(downloadProcess.getInputStream()).thenReturn(new ByteArrayInputStream(output.getBytes(StandardCharsets.UTF_8)));
+        when(downloadProcess.waitFor()).thenReturn(0);
+
+        doReturn(updateProcess).when(spyService).startProcess(argThat(list -> list.contains("-U")), any());
+        doReturn(downloadProcess).when(spyService).startProcess(argThat(list -> !list.contains("-U")), any());
+
+        // Create dummy file
+        Path videoDir = tempDir.resolve("Already Video [vid-already]");
+        Files.createDirectories(videoDir);
+        Files.createFile(videoDir.resolve("existing_video.mp4"));
+
+        spyService.processPendingTasks();
+
+        verify(downloadTaskRepository, atLeastOnce()).save(argThat(t
+                -> t.getStatus() == TaskStatus.DOWNLOADED
+                && t.getFilePath() != null
+                && t.getFilePath().endsWith("existing_video.mp4")
+        ));
+    }
+
+    @Test
+    void processPendingTasks_ShouldParsePostProcessorOutput(@TempDir Path tempDir) throws Exception {
+        // Setup
+        DownloadJob job = new DownloadJob();
+        job.setId("job-post");
+        job.setConfigName("default");
+        DownloadTask task = new DownloadTask();
+        task.setId("task-post");
+        task.setVideoId("vid-post");
+        task.setTitle("Post Video");
+        task.setJob(job);
+        job.setTasks(List.of(task));
+
+        DownloaderConfig config = new DownloaderConfig();
+        config.setName("default");
+        config.setYtDlpConfig(new YtDlpConfig());
+
+        when(downloadTaskRepository.findAllByStatusWithJob(TaskStatus.PENDING)).thenReturn(List.of(task));
+        when(configsService.getResolvedConfig("default")).thenReturn(config);
+        when(configsService.getResolvedConfig(null)).thenReturn(config);
+        when(defaultProperties.getDownloadFolder()).thenReturn(tempDir.toString());
+        when(defaultProperties.getNetscapeCookieFolder()).thenReturn(tempDir.toString());
+        when(downloadJobRepository.findByIdWithTasks("job-post")).thenReturn(Optional.of(job));
+
+        ExecutorServiceImpl spyService = mock(ExecutorServiceImpl.class, withSettings()
+                .useConstructor(downloadTaskRepository, downloadJobRepository, defaultProperties, configsService, apiClientService, taskScheduler)
+                .defaultAnswer(CALLS_REAL_METHODS));
+
+        injectSynchronousExecutor(spyService);
+
+        Process updateProcess = mock(Process.class);
+        when(updateProcess.getInputStream()).thenReturn(new ByteArrayInputStream("".getBytes()));
+        when(updateProcess.waitFor()).thenReturn(0);
+
+        Process downloadProcess = mock(Process.class);
+        // This pattern usually appears for metadata/subs, but we test that it captures the filename
+        String output = "[info] Writing video description to: description.txt\n";
+        when(downloadProcess.getInputStream()).thenReturn(new ByteArrayInputStream(output.getBytes(StandardCharsets.UTF_8)));
+        when(downloadProcess.waitFor()).thenReturn(0);
+
+        doReturn(updateProcess).when(spyService).startProcess(argThat(list -> list.contains("-U")), any());
+        doReturn(downloadProcess).when(spyService).startProcess(argThat(list -> !list.contains("-U")), any());
+
+        // Create dummy file
+        Path videoDir = tempDir.resolve("Post Video [vid-post]");
+        Files.createDirectories(videoDir);
+        Files.createFile(videoDir.resolve("description.txt"));
+
+        spyService.processPendingTasks();
+
+        verify(downloadTaskRepository, atLeastOnce()).save(argThat(t
+                -> t.getStatus() == TaskStatus.DOWNLOADED
+                && t.getFilePath() != null
+                && t.getFilePath().endsWith("description.txt")
+        ));
+    }
+
+    @Test
+    void processPendingTasks_ShouldHandleProgressParsing_EdgeCases(@TempDir Path tempDir) throws Exception {
+        // Setup
+        DownloadJob job = new DownloadJob();
+        job.setId("job-edge-progress");
+        job.setConfigName("default");
+        DownloadTask task = new DownloadTask();
+        task.setId("task-edge-progress");
+        task.setVideoId("vid-edge-progress");
+        task.setTitle("Edge Progress Video");
+        task.setJob(job);
+        job.setTasks(List.of(task));
+
+        DownloaderConfig config = new DownloaderConfig();
+        config.setName("default");
+        config.setYtDlpConfig(new YtDlpConfig());
+
+        when(downloadTaskRepository.findAllByStatusWithJob(TaskStatus.PENDING)).thenReturn(List.of(task));
+        when(configsService.getResolvedConfig("default")).thenReturn(config);
+        when(configsService.getResolvedConfig(null)).thenReturn(config);
+        when(defaultProperties.getDownloadFolder()).thenReturn(tempDir.toString());
+        when(defaultProperties.getNetscapeCookieFolder()).thenReturn(tempDir.toString());
+        when(downloadJobRepository.findByIdWithTasks("job-edge-progress")).thenReturn(Optional.of(job));
+
+        ExecutorServiceImpl spyService = mock(ExecutorServiceImpl.class, withSettings()
+                .useConstructor(downloadTaskRepository, downloadJobRepository, defaultProperties, configsService, apiClientService, taskScheduler)
+                .defaultAnswer(CALLS_REAL_METHODS));
+
+        injectSynchronousExecutor(spyService);
+
+        Process updateProcess = mock(Process.class);
+        when(updateProcess.getInputStream()).thenReturn(new ByteArrayInputStream("".getBytes()));
+        when(updateProcess.waitFor()).thenReturn(0);
+
+        Process downloadProcess = mock(Process.class);
+        // 1. Audio file (not video) -> progress 20% should be ignored
+        // 2. Video file -> progress nan% -> exception
+        // 3. Video file -> progress 50% -> should be saved
+        String output = """
+                [download] Destination: audio.mp3
+                [download]  20.0% of 10MB
+                [download] Destination: video.mp4
+                [download]   nan% of 10MB
+                [download]  50.0% of 10MB
+                """;
+        when(downloadProcess.getInputStream()).thenReturn(new ByteArrayInputStream(output.getBytes(StandardCharsets.UTF_8)));
+        when(downloadProcess.waitFor()).thenReturn(0);
+
+        doReturn(updateProcess).when(spyService).startProcess(argThat(list -> list.contains("-U")), any());
+        doReturn(downloadProcess).when(spyService).startProcess(argThat(list -> !list.contains("-U")), any());
+
+        // Capture progress updates
+        List<Double> savedProgress = new ArrayList<>();
+        doAnswer((InvocationOnMock invocation) -> {
+            DownloadTask t = invocation.getArgument(0);
+            if (t.getProgress() != null) {
+                savedProgress.add(t.getProgress());
+            }
+            return null;
+        }).when(downloadTaskRepository).save(any(DownloadTask.class));
+
+        // Create dummy file
+        Path videoDir = tempDir.resolve("Edge Progress Video [vid-edge-progress]");
+        Files.createDirectories(videoDir);
+        Files.createFile(videoDir.resolve("video.mp4"));
+
+        spyService.processPendingTasks();
+
+        // Verify
+        // 20.0 should NOT be present (audio file)
+        // 50.0 SHOULD be present (video file)
+        assertThat(savedProgress).contains(50.0);
+        assertThat(savedProgress).doesNotContain(20.0);
+    }
+
+    @Test
+    void processPendingTasks_ShouldHandleProgressParsing_AdditionalEdgeCases(@TempDir Path tempDir) throws Exception {
+        // Setup
+        DownloadJob job = new DownloadJob();
+        job.setId("job-edge-2");
+        job.setConfigName("default");
+        DownloadTask task = new DownloadTask();
+        task.setId("task-edge-2");
+        task.setVideoId("vid-edge-2");
+        task.setTitle("Edge 2 Video");
+        task.setJob(job);
+        job.setTasks(List.of(task));
+
+        DownloaderConfig config = new DownloaderConfig();
+        config.setName("default");
+        config.setYtDlpConfig(new YtDlpConfig());
+
+        when(downloadTaskRepository.findAllByStatusWithJob(TaskStatus.PENDING)).thenReturn(List.of(task));
+        when(configsService.getResolvedConfig("default")).thenReturn(config);
+        when(configsService.getResolvedConfig(null)).thenReturn(config);
+        when(defaultProperties.getDownloadFolder()).thenReturn(tempDir.toString());
+        when(defaultProperties.getNetscapeCookieFolder()).thenReturn(tempDir.toString());
+        when(downloadJobRepository.findByIdWithTasks("job-edge-2")).thenReturn(Optional.of(job));
+
+        ExecutorServiceImpl spyService = mock(ExecutorServiceImpl.class, withSettings()
+                .useConstructor(downloadTaskRepository, downloadJobRepository, defaultProperties, configsService, apiClientService, taskScheduler)
+                .defaultAnswer(CALLS_REAL_METHODS));
+
+        injectSynchronousExecutor(spyService);
+
+        Process updateProcess = mock(Process.class);
+        when(updateProcess.getInputStream()).thenReturn(new ByteArrayInputStream("".getBytes()));
+        when(updateProcess.waitFor()).thenReturn(0);
+
+        Process downloadProcess = mock(Process.class);
+        // 1. Progress with no filename (null check)
+        // 2. .webm file (branch coverage)
+        // 3. .mkv file (branch coverage)
+        // 4. Invalid number format (catch block) - ".." matches [\d.]+ regex but fails Double.parseDouble
+        String output = """
+                [download]  10.0% of 10MB
+                [download] Destination: video.webm
+                [download]  20.0% of 10MB
+                [download] Destination: video.mkv
+                [download]  30.0% of 10MB
+                [download] Destination: video.mp4
+                [download]  ..% of 10MB
+                """;
+        when(downloadProcess.getInputStream()).thenReturn(new ByteArrayInputStream(output.getBytes(StandardCharsets.UTF_8)));
+        when(downloadProcess.waitFor()).thenReturn(0);
+
+        doReturn(updateProcess).when(spyService).startProcess(argThat(list -> list.contains("-U")), any());
+        doReturn(downloadProcess).when(spyService).startProcess(argThat(list -> !list.contains("-U")), any());
+
+        // Capture progress updates
+        List<Double> savedProgress = new ArrayList<>();
+        doAnswer(invocation -> {
+            DownloadTask t = invocation.getArgument(0);
+            if (t.getProgress() != null) {
+                savedProgress.add(t.getProgress());
+            }
+            return null;
+        }).when(downloadTaskRepository).save(any(DownloadTask.class));
+
+        // Create dummy file
+        Path videoDir = tempDir.resolve("Edge 2 Video [vid-edge-2]");
+        Files.createDirectories(videoDir);
+        Files.createFile(videoDir.resolve("video.mp4"));
+
+        spyService.processPendingTasks();
+
+        // Verify
+        // 10.0% -> ignored because filename is null (isVideoFile=false)
+        // 20.0% -> saved (.webm)
+        // 30.0% -> saved (.mkv)
+        // ..% -> ignored (exception caught)
+        assertThat(savedProgress).contains(20.0, 30.0);
+        assertThat(savedProgress).doesNotContain(10.0);
+    }
+
+    @Test
+    void processPendingTasks_ShouldHandleEmptyFilename_InOutputParsing(@TempDir Path tempDir) throws Exception {
+        // Setup
+        DownloadJob job = new DownloadJob();
+        job.setId("job-empty-filename");
+        job.setConfigName("default");
+        DownloadTask task = new DownloadTask();
+        task.setId("task-empty-filename");
+        task.setVideoId("vid-empty-filename");
+        task.setTitle("Empty Filename Video");
+        task.setJob(job);
+        job.setTasks(List.of(task));
+
+        DownloaderConfig config = new DownloaderConfig();
+        config.setName("default");
+        config.setYtDlpConfig(new YtDlpConfig());
+
+        when(downloadTaskRepository.findAllByStatusWithJob(TaskStatus.PENDING)).thenReturn(List.of(task));
+        when(configsService.getResolvedConfig("default")).thenReturn(config);
+        when(configsService.getResolvedConfig(null)).thenReturn(config);
+        when(defaultProperties.getDownloadFolder()).thenReturn(tempDir.toString());
+        when(defaultProperties.getNetscapeCookieFolder()).thenReturn(tempDir.toString());
+        when(downloadJobRepository.findByIdWithTasks("job-empty-filename")).thenReturn(Optional.of(job));
+
+        ExecutorServiceImpl spyService = mock(ExecutorServiceImpl.class, withSettings()
+                .useConstructor(downloadTaskRepository, downloadJobRepository, defaultProperties, configsService, apiClientService, taskScheduler)
+                .defaultAnswer(CALLS_REAL_METHODS));
+
+        injectSynchronousExecutor(spyService);
+
+        Process updateProcess = mock(Process.class);
+        when(updateProcess.getInputStream()).thenReturn(new ByteArrayInputStream("".getBytes()));
+        when(updateProcess.waitFor()).thenReturn(0);
+
+        Process downloadProcess = mock(Process.class);
+        // 1. Destination line with empty filename (trailing space preserved by \s)
+        // 2. Progress line (should be ignored because filename is empty -> isVideoFile is false)
+        String output = """
+                [download] Destination:\s
+                [download]  50.0% of 10MB
+                """;
+        when(downloadProcess.getInputStream()).thenReturn(new ByteArrayInputStream(output.getBytes(StandardCharsets.UTF_8)));
+        when(downloadProcess.waitFor()).thenReturn(0);
+
+        doReturn(updateProcess).when(spyService).startProcess(argThat(list -> list.contains("-U")), any());
+        doReturn(downloadProcess).when(spyService).startProcess(argThat(list -> !list.contains("-U")), any());
+
+        List<Double> savedProgress = new ArrayList<>();
+        doAnswer(invocation -> {
+            DownloadTask t = invocation.getArgument(0);
+            if (t.getProgress() != null) {
+                savedProgress.add(t.getProgress());
+            }
+            return null;
+        }).when(downloadTaskRepository).save(any(DownloadTask.class));
+
+        spyService.processPendingTasks();
+
+        assertThat(savedProgress).doesNotContain(50.0);
+    }
+
+    @Test
+    void processPendingTasks_ShouldThrottleProgressUpdates(@TempDir Path tempDir) throws Exception {
+        // Setup
+        DownloadJob job = new DownloadJob();
+        job.setId("job-throttle");
+        job.setConfigName("default");
+        DownloadTask task = new DownloadTask();
+        task.setId("task-throttle");
+        task.setVideoId("vid-throttle");
+        task.setTitle("Throttle Video");
+        task.setJob(job);
+        job.setTasks(List.of(task));
+
+        DownloaderConfig config = new DownloaderConfig();
+        config.setName("default");
+        config.setYtDlpConfig(new YtDlpConfig());
+
+        when(downloadTaskRepository.findAllByStatusWithJob(TaskStatus.PENDING)).thenReturn(List.of(task));
+        when(configsService.getResolvedConfig("default")).thenReturn(config);
+        when(configsService.getResolvedConfig(null)).thenReturn(config);
+        when(defaultProperties.getDownloadFolder()).thenReturn(tempDir.toString());
+        when(defaultProperties.getNetscapeCookieFolder()).thenReturn(tempDir.toString());
+        when(downloadJobRepository.findByIdWithTasks("job-throttle")).thenReturn(Optional.of(job));
+
+        ExecutorServiceImpl spyService = mock(ExecutorServiceImpl.class, withSettings()
+                .useConstructor(downloadTaskRepository, downloadJobRepository, defaultProperties, configsService, apiClientService, taskScheduler)
+                .defaultAnswer(CALLS_REAL_METHODS));
+
+        injectSynchronousExecutor(spyService);
+
+        Process updateProcess = mock(Process.class);
+        when(updateProcess.getInputStream()).thenReturn(new ByteArrayInputStream("".getBytes()));
+        when(updateProcess.waitFor()).thenReturn(0);
+
+        Process downloadProcess = mock(Process.class);
+        // 10.0% -> Update (First)
+        // 11.0% -> Skip (Delta < 5%, Time < 1s)
+        // 16.0% -> Update (Delta >= 5%)
+        String output = """
+                [download] Destination: video.mp4
+                [download]  10.0% of 10MB
+                [download]  11.0% of 10MB
+                [download]  16.0% of 10MB
+                """;
+        when(downloadProcess.getInputStream()).thenReturn(new ByteArrayInputStream(output.getBytes(StandardCharsets.UTF_8)));
+        when(downloadProcess.waitFor()).thenReturn(0);
+
+        doReturn(updateProcess).when(spyService).startProcess(argThat(list -> list.contains("-U")), any());
+        doReturn(downloadProcess).when(spyService).startProcess(argThat(list -> !list.contains("-U")), any());
+
+        List<Double> savedProgress = new ArrayList<>();
+        doAnswer(invocation -> {
+            DownloadTask t = invocation.getArgument(0);
+            if (t.getProgress() != null) {
+                savedProgress.add(t.getProgress());
+            }
+            return null;
+        }).when(downloadTaskRepository).save(any(DownloadTask.class));
+
+        // Create dummy file
+        Path videoDir = tempDir.resolve("Throttle Video [vid-throttle]");
+        Files.createDirectories(videoDir);
+        Files.createFile(videoDir.resolve("video.mp4"));
+
+        spyService.processPendingTasks();
+
+        // Verify
+        assertThat(savedProgress).contains(10.0, 16.0);
+        assertThat(savedProgress).doesNotContain(11.0);
+    }
+
+    @Test
+    void processPendingTasks_ShouldHandleFilenameWithoutExtension(@TempDir Path tempDir) throws Exception {
+        // Setup
+        DownloadJob job = new DownloadJob();
+        job.setId("job-no-ext");
+        job.setConfigName("default");
+        DownloadTask task = new DownloadTask();
+        task.setId("task-no-ext");
+        task.setVideoId("vid-no-ext");
+        task.setTitle("No Ext Video");
+        task.setDescription("Test Description");
+        task.setJob(job);
+        job.setTasks(List.of(task));
+
+        DownloaderConfig config = new DownloaderConfig();
+        config.setName("default");
+        config.setYtDlpConfig(new YtDlpConfig());
+
+        when(downloadTaskRepository.findAllByStatusWithJob(TaskStatus.PENDING)).thenReturn(List.of(task));
+        when(configsService.getResolvedConfig("default")).thenReturn(config);
+        when(configsService.getResolvedConfig(null)).thenReturn(config);
+        when(defaultProperties.getDownloadFolder()).thenReturn(tempDir.toString());
+        when(defaultProperties.getNetscapeCookieFolder()).thenReturn(tempDir.toString());
+        when(downloadJobRepository.findByIdWithTasks("job-no-ext")).thenReturn(Optional.of(job));
+
+        ExecutorServiceImpl spyService = mock(ExecutorServiceImpl.class, withSettings()
+                .useConstructor(downloadTaskRepository, downloadJobRepository, defaultProperties, configsService, apiClientService, taskScheduler)
+                .defaultAnswer(CALLS_REAL_METHODS));
+
+        injectSynchronousExecutor(spyService);
+
+        Process updateProcess = mock(Process.class);
+        when(updateProcess.getInputStream()).thenReturn(new ByteArrayInputStream("".getBytes()));
+        when(updateProcess.waitFor()).thenReturn(0);
+
+        Process downloadProcess = mock(Process.class);
+        String output = "[download] Destination: video_no_ext\n";
+        when(downloadProcess.getInputStream()).thenReturn(new ByteArrayInputStream(output.getBytes(StandardCharsets.UTF_8)));
+        when(downloadProcess.waitFor()).thenReturn(0);
+
+        doReturn(updateProcess).when(spyService).startProcess(argThat(list -> list.contains("-U")), any());
+        doReturn(downloadProcess).when(spyService).startProcess(argThat(list -> !list.contains("-U")), any());
+
+        // Create dummy file
+        Path videoDir = tempDir.resolve("No Ext Video [vid-no-ext]");
+        Files.createDirectories(videoDir);
+        Files.createFile(videoDir.resolve("video_no_ext"));
+
+        spyService.processPendingTasks();
+
+        // Verify success
+        verify(downloadTaskRepository, atLeastOnce()).save(argThat(t
+                -> t.getStatus() == TaskStatus.DOWNLOADED
+                && t.getFilePath() != null
+                && t.getFilePath().endsWith("video_no_ext")
+        ));
+
+        // Verify description file exists with correct name (base filename + .description)
+        assertThat(Files.exists(videoDir.resolve("video_no_ext.description"))).isTrue();
+    }
+
+    @Test
+    void processPendingTasks_ShouldSkipThumbnail_WhenUrlMissing(@TempDir Path tempDir) throws Exception {
+        // Setup
+        DownloadJob job = new DownloadJob();
+        job.setId("job-no-thumb");
+        job.setConfigName("default");
+        DownloadTask task = new DownloadTask();
+        task.setId("task-no-thumb");
+        task.setVideoId("vid-no-thumb");
+        task.setTitle("No Thumb Video");
+        task.setThumbnailUrl(null); // Missing URL
+        task.setJob(job);
+        job.setTasks(List.of(task));
+
+        DownloaderConfig config = new DownloaderConfig();
+        config.setName("default");
+        config.setYtDlpConfig(new YtDlpConfig());
+
+        when(downloadTaskRepository.findAllByStatusWithJob(TaskStatus.PENDING)).thenReturn(List.of(task));
+        when(configsService.getResolvedConfig("default")).thenReturn(config);
+        when(configsService.getResolvedConfig(null)).thenReturn(config);
+        when(defaultProperties.getDownloadFolder()).thenReturn(tempDir.toString());
+        when(defaultProperties.getNetscapeCookieFolder()).thenReturn(tempDir.toString());
+        when(downloadJobRepository.findByIdWithTasks("job-no-thumb")).thenReturn(Optional.of(job));
+
+        ExecutorServiceImpl spyService = mock(ExecutorServiceImpl.class, withSettings()
+                .useConstructor(downloadTaskRepository, downloadJobRepository, defaultProperties, configsService, apiClientService, taskScheduler)
+                .defaultAnswer(CALLS_REAL_METHODS));
+
+        injectSynchronousExecutor(spyService);
+
+        Process updateProcess = mock(Process.class);
+        when(updateProcess.getInputStream()).thenReturn(new ByteArrayInputStream("".getBytes()));
+        when(updateProcess.waitFor()).thenReturn(0);
+
+        Process downloadProcess = mock(Process.class);
+        String output = "[download] Destination: video.mp4\n";
+        when(downloadProcess.getInputStream()).thenReturn(new ByteArrayInputStream(output.getBytes(StandardCharsets.UTF_8)));
+        when(downloadProcess.waitFor()).thenReturn(0);
+
+        doReturn(updateProcess).when(spyService).startProcess(argThat(list -> list.contains("-U")), any());
+        doReturn(downloadProcess).when(spyService).startProcess(argThat(list -> !list.contains("-U")), any());
+
+        // Create dummy video file
+        Path videoDir = tempDir.resolve("No Thumb Video [vid-no-thumb]");
+        Files.createDirectories(videoDir);
+        Files.createFile(videoDir.resolve("video.mp4"));
+
+        spyService.processPendingTasks();
+
+        // Verify success
+        verify(downloadTaskRepository, atLeastOnce()).save(argThat(t -> t.getStatus() == TaskStatus.DOWNLOADED));
+
+        // Verify no thumbnail file created (default would be video.jpg)
+        assertThat(Files.exists(videoDir.resolve("video.jpg"))).isFalse();
+    }
+
+    @Test
+    void processPendingTasks_ShouldDownloadThumbnail_WithCorrectExtension(@TempDir Path tempDir) throws Exception {
+        // Setup source thumbnail file
+        Path sourceThumb = tempDir.resolve("source.png");
+        Files.writeString(sourceThumb, "fake image content");
+        String thumbUrl = sourceThumb.toUri().toString();
+
+        DownloadJob job = new DownloadJob();
+        job.setId("job-thumb-ext");
+        job.setConfigName("default");
+        DownloadTask task = new DownloadTask();
+        task.setId("task-thumb-ext");
+        task.setVideoId("vid-thumb-ext");
+        task.setTitle("Thumb Ext Video");
+        task.setThumbnailUrl(thumbUrl);
+        task.setJob(job);
+        job.setTasks(List.of(task));
+
+        DownloaderConfig config = new DownloaderConfig();
+        config.setName("default");
+        config.setYtDlpConfig(new YtDlpConfig());
+
+        when(downloadTaskRepository.findAllByStatusWithJob(TaskStatus.PENDING)).thenReturn(List.of(task));
+        when(configsService.getResolvedConfig("default")).thenReturn(config);
+        when(configsService.getResolvedConfig(null)).thenReturn(config);
+        when(defaultProperties.getDownloadFolder()).thenReturn(tempDir.toString());
+        when(defaultProperties.getNetscapeCookieFolder()).thenReturn(tempDir.toString());
+        when(downloadJobRepository.findByIdWithTasks("job-thumb-ext")).thenReturn(Optional.of(job));
+
+        ExecutorServiceImpl spyService = mock(ExecutorServiceImpl.class, withSettings()
+                .useConstructor(downloadTaskRepository, downloadJobRepository, defaultProperties, configsService, apiClientService, taskScheduler)
+                .defaultAnswer(CALLS_REAL_METHODS));
+
+        injectSynchronousExecutor(spyService);
+
+        Process updateProcess = mock(Process.class);
+        when(updateProcess.getInputStream()).thenReturn(new ByteArrayInputStream("".getBytes()));
+        when(updateProcess.waitFor()).thenReturn(0);
+
+        Process downloadProcess = mock(Process.class);
+        String output = "[download] Destination: video.mp4\n";
+        when(downloadProcess.getInputStream()).thenReturn(new ByteArrayInputStream(output.getBytes(StandardCharsets.UTF_8)));
+        when(downloadProcess.waitFor()).thenReturn(0);
+
+        doReturn(updateProcess).when(spyService).startProcess(argThat(list -> list.contains("-U")), any());
+        doReturn(downloadProcess).when(spyService).startProcess(argThat(list -> !list.contains("-U")), any());
+
+        // Create dummy video file
+        Path videoDir = tempDir.resolve("Thumb Ext Video [vid-thumb-ext]");
+        Files.createDirectories(videoDir);
+        Files.createFile(videoDir.resolve("video.mp4"));
+
+        spyService.processPendingTasks();
+
+        // Verify success
+        verify(downloadTaskRepository, atLeastOnce()).save(argThat(t -> t.getStatus() == TaskStatus.DOWNLOADED));
+
+        // Verify thumbnail downloaded with correct extension (.png)
+        Path expectedThumb = videoDir.resolve("video.png");
+        assertThat(Files.exists(expectedThumb)).isTrue();
+        assertThat(Files.readString(expectedThumb)).isEqualTo("fake image content");
+    }
+
+    @Test
+    void processPendingTasks_ShouldHandleThumbnailDownloadFailure(@TempDir Path tempDir) throws Exception {
+        // Setup invalid thumbnail URL (file not found)
+        String thumbUrl = tempDir.resolve("non-existent.jpg").toUri().toString();
+
+        DownloadJob job = new DownloadJob();
+        job.setId("job-thumb-fail");
+        job.setConfigName("default");
+        DownloadTask task = new DownloadTask();
+        task.setId("task-thumb-fail");
+        task.setVideoId("vid-thumb-fail");
+        task.setTitle("Thumb Fail Video");
+        task.setThumbnailUrl(thumbUrl);
+        task.setJob(job);
+        job.setTasks(List.of(task));
+
+        DownloaderConfig config = new DownloaderConfig();
+        config.setName("default");
+        config.setYtDlpConfig(new YtDlpConfig());
+
+        when(downloadTaskRepository.findAllByStatusWithJob(TaskStatus.PENDING)).thenReturn(List.of(task));
+        when(configsService.getResolvedConfig("default")).thenReturn(config);
+        when(configsService.getResolvedConfig(null)).thenReturn(config);
+        when(defaultProperties.getDownloadFolder()).thenReturn(tempDir.toString());
+        when(defaultProperties.getNetscapeCookieFolder()).thenReturn(tempDir.toString());
+        when(downloadJobRepository.findByIdWithTasks("job-thumb-fail")).thenReturn(Optional.of(job));
+
+        ExecutorServiceImpl spyService = mock(ExecutorServiceImpl.class, withSettings()
+                .useConstructor(downloadTaskRepository, downloadJobRepository, defaultProperties, configsService, apiClientService, taskScheduler)
+                .defaultAnswer(CALLS_REAL_METHODS));
+
+        injectSynchronousExecutor(spyService);
+
+        Process updateProcess = mock(Process.class);
+        when(updateProcess.getInputStream()).thenReturn(new ByteArrayInputStream("".getBytes()));
+        when(updateProcess.waitFor()).thenReturn(0);
+
+        Process downloadProcess = mock(Process.class);
+        String output = "[download] Destination: video.mp4\n";
+        when(downloadProcess.getInputStream()).thenReturn(new ByteArrayInputStream(output.getBytes(StandardCharsets.UTF_8)));
+        when(downloadProcess.waitFor()).thenReturn(0);
+
+        doReturn(updateProcess).when(spyService).startProcess(argThat(list -> list.contains("-U")), any());
+        doReturn(downloadProcess).when(spyService).startProcess(argThat(list -> !list.contains("-U")), any());
+
+        // Create dummy video file
+        Path videoDir = tempDir.resolve("Thumb Fail Video [vid-thumb-fail]");
+        Files.createDirectories(videoDir);
+        Files.createFile(videoDir.resolve("video.mp4"));
+
+        spyService.processPendingTasks();
+
+        // Verify success (thumbnail failure is non-fatal)
+        verify(downloadTaskRepository, atLeastOnce()).save(argThat(t -> t.getStatus() == TaskStatus.DOWNLOADED));
+
+        // Verify no thumbnail file
+        assertThat(Files.exists(videoDir.resolve("video.jpg"))).isFalse();
+    }
+
+    @Test
+    void processPendingTasks_ShouldUseDefaultThumbnailExtension_WhenUrlHasNoExtension(@TempDir Path tempDir) throws Exception {
+        // Setup source thumbnail file without extension
+        Path sourceThumb = tempDir.resolve("source_no_ext");
+        Files.writeString(sourceThumb, "fake image content");
+        String thumbUrl = sourceThumb.toUri().toString();
+
+        DownloadJob job = new DownloadJob();
+        job.setId("job-thumb-no-ext");
+        job.setConfigName("default");
+        DownloadTask task = new DownloadTask();
+        task.setId("task-thumb-no-ext");
+        task.setVideoId("vid-thumb-no-ext");
+        task.setTitle("Thumb No Ext Video");
+        task.setThumbnailUrl(thumbUrl);
+        task.setJob(job);
+        job.setTasks(List.of(task));
+
+        DownloaderConfig config = new DownloaderConfig();
+        config.setName("default");
+        config.setYtDlpConfig(new YtDlpConfig());
+
+        when(downloadTaskRepository.findAllByStatusWithJob(TaskStatus.PENDING)).thenReturn(List.of(task));
+        when(configsService.getResolvedConfig("default")).thenReturn(config);
+        when(configsService.getResolvedConfig(null)).thenReturn(config);
+        when(defaultProperties.getDownloadFolder()).thenReturn(tempDir.toString());
+        when(defaultProperties.getNetscapeCookieFolder()).thenReturn(tempDir.toString());
+        when(downloadJobRepository.findByIdWithTasks("job-thumb-no-ext")).thenReturn(Optional.of(job));
+
+        ExecutorServiceImpl spyService = mock(ExecutorServiceImpl.class, withSettings()
+                .useConstructor(downloadTaskRepository, downloadJobRepository, defaultProperties, configsService, apiClientService, taskScheduler)
+                .defaultAnswer(CALLS_REAL_METHODS));
+
+        injectSynchronousExecutor(spyService);
+
+        Process updateProcess = mock(Process.class);
+        when(updateProcess.getInputStream()).thenReturn(new ByteArrayInputStream("".getBytes()));
+        when(updateProcess.waitFor()).thenReturn(0);
+
+        Process downloadProcess = mock(Process.class);
+        String output = "[download] Destination: video.mp4\n";
+        when(downloadProcess.getInputStream()).thenReturn(new ByteArrayInputStream(output.getBytes(StandardCharsets.UTF_8)));
+        when(downloadProcess.waitFor()).thenReturn(0);
+
+        doReturn(updateProcess).when(spyService).startProcess(argThat(list -> list.contains("-U")), any());
+        doReturn(downloadProcess).when(spyService).startProcess(argThat(list -> !list.contains("-U")), any());
+
+        // Create dummy video file
+        Path videoDir = tempDir.resolve("Thumb No Ext Video [vid-thumb-no-ext]");
+        Files.createDirectories(videoDir);
+        Files.createFile(videoDir.resolve("video.mp4"));
+
+        spyService.processPendingTasks();
+
+        // Verify success
+        verify(downloadTaskRepository, atLeastOnce()).save(argThat(t -> t.getStatus() == TaskStatus.DOWNLOADED));
+
+        // Verify thumbnail downloaded with default extension (.jpg)
+        Path expectedThumb = videoDir.resolve("video.jpg");
+        assertThat(Files.exists(expectedThumb)).isTrue();
+        assertThat(Files.readString(expectedThumb)).isEqualTo("fake image content");
+    }
+
+    @Test
+    void processPendingTasks_ShouldUseDefaultThumbnailExtension_WhenDotIsBeforeLastSlash(@TempDir Path tempDir) throws Exception {
+        // Setup source thumbnail file in a directory with a dot
+        Path folderWithDot = tempDir.resolve("folder.with.dot");
+        Files.createDirectories(folderWithDot);
+        Path sourceThumb = folderWithDot.resolve("image_no_ext");
+        Files.writeString(sourceThumb, "fake image content");
+        String thumbUrl = sourceThumb.toUri().toString();
+
+        DownloadJob job = new DownloadJob();
+        job.setId("job-dot-path");
+        job.setConfigName("default");
+        DownloadTask task = new DownloadTask();
+        task.setId("task-dot-path");
+        task.setVideoId("vid-dot-path");
+        task.setTitle("Dot Path Video");
+        task.setThumbnailUrl(thumbUrl);
+        task.setJob(job);
+        job.setTasks(List.of(task));
+
+        DownloaderConfig config = new DownloaderConfig();
+        config.setName("default");
+        config.setYtDlpConfig(new YtDlpConfig());
+
+        when(downloadTaskRepository.findAllByStatusWithJob(TaskStatus.PENDING)).thenReturn(List.of(task));
+        when(configsService.getResolvedConfig("default")).thenReturn(config);
+        when(configsService.getResolvedConfig(null)).thenReturn(config);
+        when(defaultProperties.getDownloadFolder()).thenReturn(tempDir.toString());
+        when(defaultProperties.getNetscapeCookieFolder()).thenReturn(tempDir.toString());
+        when(downloadJobRepository.findByIdWithTasks("job-dot-path")).thenReturn(Optional.of(job));
+
+        ExecutorServiceImpl spyService = mock(ExecutorServiceImpl.class, withSettings()
+                .useConstructor(downloadTaskRepository, downloadJobRepository, defaultProperties, configsService, apiClientService, taskScheduler)
+                .defaultAnswer(CALLS_REAL_METHODS));
+
+        injectSynchronousExecutor(spyService);
+
+        Process updateProcess = mock(Process.class);
+        when(updateProcess.getInputStream()).thenReturn(new ByteArrayInputStream("".getBytes()));
+        when(updateProcess.waitFor()).thenReturn(0);
+
+        Process downloadProcess = mock(Process.class);
+        String output = "[download] Destination: video.mp4\n";
+        when(downloadProcess.getInputStream()).thenReturn(new ByteArrayInputStream(output.getBytes(StandardCharsets.UTF_8)));
+        when(downloadProcess.waitFor()).thenReturn(0);
+
+        doReturn(updateProcess).when(spyService).startProcess(argThat(list -> list.contains("-U")), any());
+        doReturn(downloadProcess).when(spyService).startProcess(argThat(list -> !list.contains("-U")), any());
+
+        // Create dummy video file
+        Path videoDir = tempDir.resolve("Dot Path Video [vid-dot-path]");
+        Files.createDirectories(videoDir);
+        Files.createFile(videoDir.resolve("video.mp4"));
+
+        spyService.processPendingTasks();
+
+        // Verify success
+        verify(downloadTaskRepository, atLeastOnce()).save(argThat(t -> t.getStatus() == TaskStatus.DOWNLOADED));
+
+        // Verify thumbnail downloaded with default extension (.jpg)
+        Path expectedThumb = videoDir.resolve("video.jpg");
+        assertThat(Files.exists(expectedThumb)).isTrue();
+        assertThat(Files.readString(expectedThumb)).isEqualTo("fake image content");
+    }
+
+    @Test
+    void processPendingTasks_ShouldHandleDescriptionSaveFailure(@TempDir Path tempDir) throws Exception {
+        // Setup
+        DownloadJob job = new DownloadJob();
+        job.setId("job-desc-fail");
+        job.setConfigName("default");
+        DownloadTask task = new DownloadTask();
+        task.setId("task-desc-fail");
+        task.setVideoId("vid-desc-fail");
+        task.setTitle("Desc Fail Video");
+        task.setDescription("Some description");
+        task.setJob(job);
+        job.setTasks(List.of(task));
+
+        DownloaderConfig config = new DownloaderConfig();
+        config.setName("default");
+        config.setYtDlpConfig(new YtDlpConfig());
+
+        when(downloadTaskRepository.findAllByStatusWithJob(TaskStatus.PENDING)).thenReturn(List.of(task));
+        when(configsService.getResolvedConfig("default")).thenReturn(config);
+        when(configsService.getResolvedConfig(null)).thenReturn(config);
+        when(defaultProperties.getDownloadFolder()).thenReturn(tempDir.toString());
+        when(defaultProperties.getNetscapeCookieFolder()).thenReturn(tempDir.toString());
+        when(downloadJobRepository.findByIdWithTasks("job-desc-fail")).thenReturn(Optional.of(job));
+
+        ExecutorServiceImpl spyService = mock(ExecutorServiceImpl.class, withSettings()
+                .useConstructor(downloadTaskRepository, downloadJobRepository, defaultProperties, configsService, apiClientService, taskScheduler)
+                .defaultAnswer(CALLS_REAL_METHODS));
+
+        injectSynchronousExecutor(spyService);
+
+        Process updateProcess = mock(Process.class);
+        when(updateProcess.getInputStream()).thenReturn(new ByteArrayInputStream("".getBytes()));
+        when(updateProcess.waitFor()).thenReturn(0);
+
+        Process downloadProcess = mock(Process.class);
+        String output = "[download] Destination: video.mp4\n";
+        when(downloadProcess.getInputStream()).thenReturn(new ByteArrayInputStream(output.getBytes(StandardCharsets.UTF_8)));
+        when(downloadProcess.waitFor()).thenReturn(0);
+
+        doReturn(updateProcess).when(spyService).startProcess(argThat(list -> list.contains("-U")), any());
+        doReturn(downloadProcess).when(spyService).startProcess(argThat(list -> !list.contains("-U")), any());
+
+        // Create dummy video file
+        Path videoDir = tempDir.resolve("Desc Fail Video [vid-desc-fail]");
+        Files.createDirectories(videoDir);
+        Files.createFile(videoDir.resolve("video.mp4"));
+
+        // Create a directory where the description file should be, to cause IOException
+        Files.createDirectory(videoDir.resolve("video.description"));
+
+        spyService.processPendingTasks();
+
+        // Verify success (description failure is non-fatal)
+        verify(downloadTaskRepository, atLeastOnce()).save(argThat(t -> t.getStatus() == TaskStatus.DOWNLOADED));
+    }
+
+    @Test
+    void processPendingTasks_ShouldHandleUpdateInterruption(@TempDir Path tempDir) throws Exception {
+        // Setup
+        DownloadJob job = new DownloadJob();
+        job.setId("job-update-int");
+        job.setConfigName("default");
+        DownloadTask task = new DownloadTask();
+        task.setId("task-update-int");
+        task.setVideoId("vid-update-int");
+        task.setTitle("Update Int Video");
+        task.setJob(job);
+        job.setTasks(List.of(task));
+
+        DownloaderConfig config = new DownloaderConfig();
+        config.setName("default");
+        config.setYtDlpConfig(new YtDlpConfig());
+
+        when(downloadTaskRepository.findAllByStatusWithJob(TaskStatus.PENDING)).thenReturn(List.of(task));
+        when(configsService.getResolvedConfig("default")).thenReturn(config);
+        when(configsService.getResolvedConfig(null)).thenReturn(config);
+        when(defaultProperties.getDownloadFolder()).thenReturn(tempDir.toString());
+        when(defaultProperties.getNetscapeCookieFolder()).thenReturn(tempDir.toString());
+        when(downloadJobRepository.findByIdWithTasks("job-update-int")).thenReturn(Optional.of(job));
+
+        ExecutorServiceImpl spyService = mock(ExecutorServiceImpl.class, withSettings()
+                .useConstructor(downloadTaskRepository, downloadJobRepository, defaultProperties, configsService, apiClientService, taskScheduler)
+                .defaultAnswer(CALLS_REAL_METHODS));
+
+        injectSynchronousExecutor(spyService);
+
+        // Mock update process to throw InterruptedException
+        Process updateProcess = mock(Process.class);
+        when(updateProcess.getInputStream()).thenReturn(new ByteArrayInputStream("".getBytes()));
+        when(updateProcess.waitFor()).thenThrow(new InterruptedException("Simulated Interrupt"));
+
+        Process downloadProcess = mock(Process.class);
+        when(downloadProcess.getInputStream()).thenReturn(new ByteArrayInputStream("[download] Destination: video.mp4\n".getBytes()));
+        when(downloadProcess.waitFor()).thenReturn(0);
+
+        doReturn(updateProcess).when(spyService).startProcess(argThat(list -> list.contains("-U")), any());
+        doReturn(downloadProcess).when(spyService).startProcess(argThat(list -> !list.contains("-U")), any());
+
+        // Execute
+        spyService.processPendingTasks();
+
+        // Verify that download still proceeded despite update failure
+        verify(downloadTaskRepository, atLeastOnce()).save(argThat(t -> t.getStatus() == TaskStatus.DOWNLOADED));
+
+        // Verify interrupt flag was set and clear it
+        assertThat(Thread.interrupted()).isTrue();
     }
 
     private void injectSynchronousExecutor(ExecutorServiceImpl spyService) throws Exception {

@@ -296,32 +296,30 @@ public class ItemServiceImpl implements ItemService {
                     Optional<Tag> bestMatch = foundTags.stream()
                             .max(Comparator.comparing(tag -> tag.getName().length()));
 
-                    if (bestMatch.isPresent()) {
-                        Tag tagToSet = bestMatch.get();
-                        item.setTag(tagToSet);
-                        logger.info("Found {} matching tag(s). Associated the most specific tag '{}' with item '{}'.",
-                                foundTags.size(), tagToSet.getName(), videoId);
+                    Tag tagToSet = bestMatch.get();
+                    item.setTag(tagToSet);
+                    logger.info("Found {} matching tag(s). Associated the most specific tag '{}' with item '{}'.",
+                            foundTags.size(), tagToSet.getName(), videoId);
 
-                        // Check for other items with the same tag and file size
-                        if (fileSize != null && fileSize > 0) {
-                            List<Item> duplicates = itemRepository.findByTagAndVideoIdNotAndDownloadInfosFileSize(tagToSet,
-                                    videoId, fileSize);
-                            if (!duplicates.isEmpty()) {
-                                String duplicateDetails = duplicates.stream()
-                                        .map(duplicateItem -> String.format("'%s' (ID: %s)", duplicateItem.getTitle(),
-                                        duplicateItem.getVideoId()))
-                                        .reduce((s1, s2) -> s1 + ", " + s2).orElse("");
-                                warnings.add(
-                                        String.format(
-                                                "Potential duplicate: %d other item(s) with the same tag and file size exist: %s",
-                                                duplicates.size(), duplicateDetails));
-                            }
+                    // Check for other items with the same tag and file size
+                    if (fileSize != null && fileSize > 0) {
+                        List<Item> duplicates = itemRepository.findByTagAndVideoIdNotAndDownloadInfosFileSize(tagToSet,
+                                videoId, fileSize);
+                        if (!duplicates.isEmpty()) {
+                            String duplicateDetails = duplicates.stream()
+                                    .map(duplicateItem -> String.format("'%s' (ID: %s)", duplicateItem.getTitle(),
+                                    duplicateItem.getVideoId()))
+                                    .reduce((s1, s2) -> s1 + ", " + s2).orElse("");
+                            warnings.add(
+                                    String.format(
+                                            "Potential duplicate: %d other item(s) with the same tag and file size exist: %s",
+                                            duplicates.size(), duplicateDetails));
                         }
                     }
+                } else {
+                    logger.info("No matching tags found for filePath: {}", filePath);
+                    warnings.add("No matching tag found for the given file path.");
                 }
-            } else {
-                logger.info("No matching tags found for filePath: {}", filePath);
-                warnings.add("No matching tag found for the given file path.");
             }
         }
 

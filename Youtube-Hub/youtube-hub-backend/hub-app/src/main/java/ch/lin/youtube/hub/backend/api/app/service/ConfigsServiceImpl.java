@@ -166,10 +166,8 @@ public class ConfigsServiceImpl implements ConfigsService {
         HubConfig config = hubConfigRepository.findByName(name)
                 .orElseThrow(() -> new ConfigNotFoundException("Configuration with name '" + name + "' not found."));
 
-        if (config != null) {
-            hubConfigRepository.delete(config);
-            logger.info("Deleted configuration: {}", name);
-        }
+        hubConfigRepository.delete(Objects.requireNonNull(config));
+        logger.info("Deleted configuration: {}", name);
 
         // After deleting, if no other configuration is enabled, enable the default one.
         if (hubConfigRepository.findAllByEnabledTrue().isEmpty()) {

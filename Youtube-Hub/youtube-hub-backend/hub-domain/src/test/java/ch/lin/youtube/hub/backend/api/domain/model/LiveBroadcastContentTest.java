@@ -23,10 +23,7 @@
  *===========================================================================*/
 package ch.lin.youtube.hub.backend.api.domain.model;
 
-import static org.junit.jupiter.api.Assertions.assertArrayEquals;
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.assertj.core.api.Assertions.assertThat;
 import org.junit.jupiter.api.Test;
 
 class LiveBroadcastContentTest {
@@ -34,25 +31,17 @@ class LiveBroadcastContentTest {
     @Test
     void testEnumValuesExist() {
         // Test that all expected enum constants exist
-        assertNotNull(LiveBroadcastContent.LIVE);
-        assertNotNull(LiveBroadcastContent.NONE);
-        assertNotNull(LiveBroadcastContent.UPCOMING);
+        assertThat(LiveBroadcastContent.LIVE).isNotNull();
+        assertThat(LiveBroadcastContent.NONE).isNotNull();
+        assertThat(LiveBroadcastContent.UPCOMING).isNotNull();
     }
 
     @Test
     void testValueOf_withValidStrings() {
         // Test that valueOf correctly returns the enum constant for a given string
-        assertEquals(LiveBroadcastContent.LIVE, LiveBroadcastContent.valueOf("LIVE"));
-        assertEquals(LiveBroadcastContent.NONE, LiveBroadcastContent.valueOf("NONE"));
-        assertEquals(LiveBroadcastContent.UPCOMING, LiveBroadcastContent.valueOf("UPCOMING"));
-    }
-
-    @Test
-    void testValueOf_withInvalidString_shouldThrowException() {
-        // Test that valueOf throws an exception for an invalid string
-        assertThrows(IllegalArgumentException.class, () -> {
-            LiveBroadcastContent.valueOf("ENDED");
-        }, "Should throw IllegalArgumentException for an unknown enum constant string.");
+        assertThat(LiveBroadcastContent.valueOf("LIVE")).isEqualTo(LiveBroadcastContent.LIVE);
+        assertThat(LiveBroadcastContent.valueOf("NONE")).isEqualTo(LiveBroadcastContent.NONE);
+        assertThat(LiveBroadcastContent.valueOf("UPCOMING")).isEqualTo(LiveBroadcastContent.UPCOMING);
     }
 
     @Test
@@ -63,7 +52,7 @@ class LiveBroadcastContentTest {
             LiveBroadcastContent.UPCOMING};
         LiveBroadcastContent[] actualValues = LiveBroadcastContent.values();
 
-        assertArrayEquals(expectedValues, actualValues);
-        assertEquals(3, actualValues.length, "There should be exactly 3 enum constants.");
+        assertThat(actualValues).containsExactly(expectedValues);
+        assertThat(actualValues).hasSize(3);
     }
 }

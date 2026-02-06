@@ -347,9 +347,13 @@ public class ExecutorServiceImpl implements ExecutorService {
 
         // Add cookie file if it exists
         Path cookiePath = Paths.get(defaultProperties.getNetscapeCookieFolder(), config.getName() + "-cookie.txt");
-        if (Boolean.TRUE.equals(ytDlpConfig.getUseCookie()) && Files.exists(cookiePath)) {
-            command.add("--cookies");
-            command.add(cookiePath.toString());
+        if (Boolean.TRUE.equals(ytDlpConfig.getUseCookie())) {
+            if (Files.exists(cookiePath)) {
+                command.add("--cookies");
+                command.add(cookiePath.toString());
+            } else {
+                logger.warn("Cookie usage enabled for config '{}', but cookie file not found at: {}", config.getName(), cookiePath);
+            }
         }
 
         if (StringUtils.hasText(ytDlpConfig.getFormatFiltering())) {
@@ -487,7 +491,7 @@ public class ExecutorServiceImpl implements ExecutorService {
             logger.info("yt-dlp process for {} exited with code {}. Duration: {} ms", task.getVideoId(), exitCode, duration);
 
             String downloadedFile = finalFilename.get();
-            if (exitCode == 0 || (exitCode == 1 && downloadedFile != null && !result.getWarnings().isEmpty())) {
+            if (exitCode == 0 || (exitCode == 1 && downloadedFile != null)) {
                 result.setSuccess(true);
                 if (StringUtils.hasText(downloadedFile)) {
                     Path path = videoDirectory.resolve(downloadedFile);
