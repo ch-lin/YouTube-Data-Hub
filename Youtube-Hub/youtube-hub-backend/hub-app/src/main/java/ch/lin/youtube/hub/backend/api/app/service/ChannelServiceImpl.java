@@ -47,11 +47,13 @@ public class ChannelServiceImpl implements ChannelService {
 
     private final ChannelRepository channelRepository;
     private final ConfigsService configsService;
+    private final YoutubeApiUsageService youtubeApiUsageService;
 
     public ChannelServiceImpl(ChannelRepository channelRepository,
-            ConfigsService configsService) {
+            ConfigsService configsService, YoutubeApiUsageService youtubeApiUsageService) {
         this.channelRepository = channelRepository;
         this.configsService = configsService;
+        this.youtubeApiUsageService = youtubeApiUsageService;
     }
 
     /**
@@ -192,6 +194,8 @@ public class ChannelServiceImpl implements ChannelService {
             params.put("forHandle", handle);
             params.put("key", apiKey);
 
+            // Quota cost: 1 unit for channels.list operation
+            youtubeApiUsageService.recordUsage(1L);
             String responseBody = client.get("/youtube/v3/channels", params, null).body();
 
             JsonNode root = OBJECT_MAPPER.readTree(responseBody);
@@ -272,6 +276,8 @@ public class ChannelServiceImpl implements ChannelService {
             params.put("key", resolvedApiKey);
 
             logger.info("Fetching details for channel {} from YouTube API.", channelId);
+            // Quota cost: 1 unit for channels.list operation
+            youtubeApiUsageService.recordUsage(1L);
             return client.get("/youtube/v3/channels", params, null).body();
         } catch (IOException | URISyntaxException e) {
             if (e instanceof HttpException && ((HttpException) e).getStatusCode() == 400

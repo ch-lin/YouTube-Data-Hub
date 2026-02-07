@@ -52,6 +52,7 @@ import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.mockConstruction;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -100,6 +101,8 @@ class YoutubeHubServiceImplTest {
     private DownloadInfoRepository downloadInfoRepository;
     @Mock
     private ConfigsService configsService;
+    @Mock
+    private YoutubeApiUsageService youtubeApiUsageService;
 
     private YoutubeHubServiceImpl service;
 
@@ -107,7 +110,7 @@ class YoutubeHubServiceImplTest {
     @SuppressWarnings("unused")
     void setUp() {
         service = new YoutubeHubServiceImpl(channelRepository, itemRepository, playlistRepository, tagRepository,
-                downloadInfoRepository, configsService);
+                downloadInfoRepository, configsService, youtubeApiUsageService);
         ReflectionTestUtils.setField(service, "downloaderServiceUrl", "http://localhost:8081");
     }
 
@@ -214,6 +217,7 @@ class YoutubeHubServiceImplTest {
             assertThat(failures).hasSize(1);
             assertThat(failures.get(0).get("channelId")).isEqualTo("ch1");
             assertThat(mocked.constructed()).hasSize(1);
+            verify(youtubeApiUsageService).recordUsage(1L);
         }
     }
 
@@ -277,6 +281,7 @@ class YoutubeHubServiceImplTest {
             assertThat(result.get("upcomingVideoCount")).isEqualTo(1);
             assertThat(result.get("liveVideoCount")).isEqualTo(1);
             assertThat(mocked.constructed()).hasSize(1);
+            verify(youtubeApiUsageService, times(3)).recordUsage(1L);
         }
     }
 
@@ -321,6 +326,7 @@ class YoutubeHubServiceImplTest {
             assertThat(existingItem.getTitle()).isEqualTo("New Title");
             assertThat(existingItem.getLiveBroadcastContent()).isEqualTo(LiveBroadcastContent.LIVE);
             assertThat(mocked.constructed()).hasSize(1);
+            verify(youtubeApiUsageService, times(3)).recordUsage(1L);
         }
     }
 
@@ -871,6 +877,7 @@ class YoutubeHubServiceImplTest {
 
             assertThat(result.get("newItems")).isEqualTo(2);
             assertThat(mocked.constructed()).hasSize(1);
+            verify(youtubeApiUsageService, times(5)).recordUsage(1L);
         }
     }
 

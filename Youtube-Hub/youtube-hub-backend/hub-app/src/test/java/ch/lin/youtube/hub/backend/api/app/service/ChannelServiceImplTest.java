@@ -60,13 +60,15 @@ class ChannelServiceImplTest {
     private ChannelRepository channelRepository;
     @Mock
     private ConfigsService configsService;
+    @Mock
+    private YoutubeApiUsageService youtubeApiUsageService;
 
     private ChannelServiceImpl channelService;
 
     @BeforeEach
     @SuppressWarnings("unused")
     void setUp() {
-        channelService = new ChannelServiceImpl(channelRepository, configsService);
+        channelService = new ChannelServiceImpl(channelRepository, configsService, youtubeApiUsageService);
     }
 
     @Test
@@ -264,6 +266,7 @@ class ChannelServiceImplTest {
             assertThat(added.getTitle()).isEqualTo("Test Channel");
             assertThat(added.getHandle()).isEqualTo("@test");
             assertThat(mocked.constructed()).hasSize(1);
+            verify(youtubeApiUsageService).recordUsage(1L);
         }
     }
 
@@ -334,6 +337,7 @@ class ChannelServiceImplTest {
             String result = channelService.getChannelDetailsFromApi(channelId, apiKey, null);
             assertThat(result).isEqualTo(responseBody);
             assertThat(mocked.constructed()).hasSize(1);
+            verify(youtubeApiUsageService).recordUsage(1L);
         }
     }
 

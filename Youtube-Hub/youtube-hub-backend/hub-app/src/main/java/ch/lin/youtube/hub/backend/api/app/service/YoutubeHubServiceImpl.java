@@ -93,6 +93,7 @@ public class YoutubeHubServiceImpl implements YoutubeHubService {
     private final TagRepository tagRepository;
     private final DownloadInfoRepository downloadInfoRepository;
     private final ConfigsService configsService;
+    private final YoutubeApiUsageService youtubeApiUsageService;
     @Value("${youtube.hub.downloader.url}")
     private String downloaderServiceUrl;
 
@@ -122,13 +123,15 @@ public class YoutubeHubServiceImpl implements YoutubeHubService {
      */
     public YoutubeHubServiceImpl(ChannelRepository channelRepository, ItemRepository itemRepository,
             PlaylistRepository playlistRepository, TagRepository tagRepository,
-            DownloadInfoRepository downloadInfoRepository, ConfigsService configsService) {
+            DownloadInfoRepository downloadInfoRepository, ConfigsService configsService,
+            YoutubeApiUsageService youtubeApiUsageService) {
         this.channelRepository = channelRepository;
         this.itemRepository = itemRepository;
         this.playlistRepository = playlistRepository;
         this.tagRepository = tagRepository;
         this.downloadInfoRepository = downloadInfoRepository;
         this.configsService = configsService;
+        this.youtubeApiUsageService = youtubeApiUsageService;
     }
 
     /**
@@ -299,6 +302,8 @@ public class YoutubeHubServiceImpl implements YoutubeHubService {
             params.put("key", apiKey);
 
             delayRequest(delayInMilliseconds);
+            // Quota cost: 1 unit for channels.list operation
+            youtubeApiUsageService.recordUsage(1L);
             String responseBody = client.get("/youtube/v3/channels", params, null).body();
 
             JsonNode root = OBJECT_MAPPER.readTree(responseBody);
@@ -388,6 +393,8 @@ public class YoutubeHubServiceImpl implements YoutubeHubService {
                 }
 
                 delayRequest(delayInMilliseconds);
+                // Quota cost: 1 unit for playlistItems.list operation
+                youtubeApiUsageService.recordUsage(1L);
                 String responseBody = client.get("/youtube/v3/playlistItems", params, null).body();
                 JsonNode root = OBJECT_MAPPER.readTree(responseBody);
 
@@ -533,7 +540,9 @@ public class YoutubeHubServiceImpl implements YoutubeHubService {
 
         try {
             delayRequest(delayInMilliseconds);
+            youtubeApiUsageService.recordUsage(1L);
             logger.debug("    -> Requested video IDs {}.", videoIds);
+            // Quota cost: 1 unit for videos.list operation
             String responseBody = client.get("/youtube/v3/videos", params, null).body();
             JsonNode root = OBJECT_MAPPER.readTree(responseBody);
             JsonNode videoItemsNode = root.path("items");
@@ -615,6 +624,8 @@ public class YoutubeHubServiceImpl implements YoutubeHubService {
 
         try {
             delayRequest(delayInMilliseconds);
+            // Quota cost: 1 unit for videos.list operation
+            youtubeApiUsageService.recordUsage(1L);
             logger.debug("    -> Checking for updates for video IDs {}.", videoIds);
             String responseBody = client.get("/youtube/v3/videos", params, null).body();
             JsonNode root = OBJECT_MAPPER.readTree(responseBody);
