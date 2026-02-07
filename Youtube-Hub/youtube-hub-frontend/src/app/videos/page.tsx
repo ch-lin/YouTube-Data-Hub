@@ -59,8 +59,18 @@ export default function Home() {
     if (typeof window === "undefined") return "all";
     return localStorage.getItem("videos_selectedChannel") || "all";
   });
-  const [forcePublishedAfter, setForcePublishedAfter] = useState(false);
-  const [publishedAfterDate, setPublishedAfterDate] = useState<Date | null>(null);
+  const [forcePublishedAfter, setForcePublishedAfter] = useState(() => {
+    if (typeof window === "undefined") return false;
+    return localStorage.getItem("videos_forcePublishedAfter") === "true";
+  });
+  const [publishedAfterDate, setPublishedAfterDate] = useState<Date | null>(() => {
+    if (typeof window === "undefined") return null;
+    const saved = localStorage.getItem("videos_publishedAfterDate");
+    if (!saved) return null;
+    if (saved.includes("T")) return new Date(saved);
+    const [y, m, d] = saved.split("-").map(Number);
+    return new Date(y, m - 1, d);
+  });
 
   const processingStatuses: ProcessingStatus[] = [
     "NEW",
@@ -113,6 +123,21 @@ export default function Home() {
   useEffect(() => {
     localStorage.setItem("videos_itemsPerPage", String(itemsPerPage));
   }, [itemsPerPage]);
+
+  useEffect(() => {
+    localStorage.setItem("videos_forcePublishedAfter", String(forcePublishedAfter));
+  }, [forcePublishedAfter]);
+
+  useEffect(() => {
+    if (publishedAfterDate) {
+      const year = publishedAfterDate.getFullYear();
+      const month = String(publishedAfterDate.getMonth() + 1).padStart(2, "0");
+      const day = String(publishedAfterDate.getDate()).padStart(2, "0");
+      localStorage.setItem("videos_publishedAfterDate", `${year}-${month}-${day}`);
+    } else {
+      localStorage.removeItem("videos_publishedAfterDate");
+    }
+  }, [publishedAfterDate]);
 
   const fetchItems = useCallback(async (mode: "available" | "upcoming" | "all" | "deleted", channelId: string) => {
     try {
@@ -242,8 +267,7 @@ export default function Home() {
       };
 
       if (forcePublishedAfter && publishedAfterDate) {
-        const date = new Date(publishedAfterDate.setUTCHours(0, 0, 0, 0));
-        requestBody.publishedAfter = date.toISOString();
+        requestBody.publishedAfter = publishedAfterDate.toISOString();
         requestBody.forcePublishedAfter = true;
       }
 
