@@ -23,6 +23,7 @@
  *===========================================================================*/
 package ch.lin.youtube.hub.backend.api.dto;
 
+import ch.lin.youtube.hub.backend.api.domain.model.SchedulerType;
 import jakarta.validation.constraints.NotBlank;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
@@ -84,5 +85,30 @@ public class CreateConfigRequest {
      * The Google Cloud project's client secret for OAuth 2.0 authentication.
      */
     private String clientSecret;
+
+    /**
+     * Whether to automatically start the fetch scheduler.
+     */
+    private Boolean autoStartFetchScheduler;
+
+    /**
+     * The type of scheduler to use (e.g., "FIXED_RATE" or "CRON").
+     */
+    private SchedulerType schedulerType;
+
+    /**
+     * The fixed rate for the scheduler in milliseconds.
+     */
+    private Long fixedRate;
+
+    /**
+     * The cron expression for the scheduler.
+     */
+    private String cronExpression;
+
+    /**
+     * The time zone for the cron expression.
+     */
+    private String cronTimeZone;
 
 }

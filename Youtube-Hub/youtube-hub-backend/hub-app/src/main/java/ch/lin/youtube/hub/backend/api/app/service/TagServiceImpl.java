@@ -24,6 +24,7 @@
 package ch.lin.youtube.hub.backend.api.app.service;
 
 import java.util.List;
+import java.util.Objects;
 
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -114,8 +115,6 @@ public class TagServiceImpl implements TagService {
         // but it's good practice to disassociate or handle related entities explicitly
         // if there are constraints. Here, we assume cascading delete is not set up
         // and items are just disassociated.
-        if (tag != null) {
-            tagRepository.delete(tag);
-        }
+        tagRepository.delete(Objects.requireNonNull(tag));
     }
 }

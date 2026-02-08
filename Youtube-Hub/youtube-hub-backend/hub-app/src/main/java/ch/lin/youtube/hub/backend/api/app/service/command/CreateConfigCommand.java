@@ -23,6 +23,7 @@
  *===========================================================================*/
 package ch.lin.youtube.hub.backend.api.app.service.command;
 
+import ch.lin.youtube.hub.backend.api.domain.model.SchedulerType;
 import lombok.Value;
 
 /**
@@ -61,4 +62,29 @@ public class CreateConfigCommand {
      * The OAuth 2.0 Client Secret for the new configuration.
      */
     String clientSecret;
+
+    /**
+     * Whether to automatically start the fetch scheduler.
+     */
+    Boolean autoStartFetchScheduler;
+
+    /**
+     * The type of scheduler to use.
+     */
+    SchedulerType schedulerType;
+
+    /**
+     * The fixed rate for the scheduler in milliseconds.
+     */
+    Long fixedRate;
+
+    /**
+     * The cron expression for the scheduler.
+     */
+    String cronExpression;
+
+    /**
+     * The time zone for the cron expression.
+     */
+    String cronTimeZone;
 }

@@ -28,6 +28,7 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.autoconfigure.domain.EntityScan;
 import org.springframework.boot.web.servlet.support.SpringBootServletInitializer;
 import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
+import org.springframework.scheduling.annotation.EnableScheduling;
 
 /**
  * The main entry point for the YouTube Hub backend Spring Boot application.
@@ -42,6 +43,7 @@ import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
 @SpringBootApplication(scanBasePackages = "ch.lin.youtube.hub.backend")
 @EntityScan("ch.lin.youtube.hub.backend.api.domain.model")
 @EnableJpaRepositories(basePackages = "ch.lin.youtube.hub.backend")
+@EnableScheduling
 public class APIApplication extends SpringBootServletInitializer {
 
     /**

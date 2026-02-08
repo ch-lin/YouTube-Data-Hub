@@ -25,6 +25,7 @@ package ch.lin.youtube.hub.backend.api.app.service.command;
 
 import java.util.Optional;
 
+import ch.lin.youtube.hub.backend.api.domain.model.SchedulerType;
 import lombok.Builder;
 import lombok.Value;
 
@@ -67,4 +68,29 @@ public class UpdateConfigCommand {
      * An optional new OAuth 2.0 Client Secret.
      */
     Optional<String> clientSecret;
+
+    /**
+     * An optional new value for auto start fetch scheduler.
+     */
+    Optional<Boolean> autoStartFetchScheduler;
+
+    /**
+     * An optional new scheduler type.
+     */
+    Optional<SchedulerType> schedulerType;
+
+    /**
+     * An optional new fixed rate.
+     */
+    Optional<Long> fixedRate;
+
+    /**
+     * An optional new cron expression.
+     */
+    Optional<String> cronExpression;
+
+    /**
+     * An optional new cron time zone.
+     */
+    Optional<String> cronTimeZone;
 }

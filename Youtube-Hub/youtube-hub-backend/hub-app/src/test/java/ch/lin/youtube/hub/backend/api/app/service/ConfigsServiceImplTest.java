@@ -51,7 +51,9 @@ import ch.lin.youtube.hub.backend.api.app.repository.HubConfigRepository;
 import ch.lin.youtube.hub.backend.api.app.service.command.CreateConfigCommand;
 import ch.lin.youtube.hub.backend.api.app.service.command.UpdateConfigCommand;
 import ch.lin.youtube.hub.backend.api.app.service.model.AllConfigsData;
+import ch.lin.youtube.hub.backend.api.app.service.model.TimeZoneOption;
 import ch.lin.youtube.hub.backend.api.domain.model.HubConfig;
+import ch.lin.youtube.hub.backend.api.domain.model.SchedulerType;
 
 @ExtendWith(MockitoExtension.class)
 class ConfigsServiceImplTest {
@@ -71,8 +73,8 @@ class ConfigsServiceImplTest {
         configsService = new ConfigsServiceImpl(hubConfigRepository, defaultProperties, defaultConfigFactory);
     }
 
-    @SuppressWarnings("null")
     @Test
+    @SuppressWarnings("null")
     void getAllConfigs_ShouldCreateDefault_WhenDbIsEmpty() {
         when(hubConfigRepository.count()).thenReturn(0L);
         HubConfig defaultConfig = new HubConfig();
@@ -113,6 +115,103 @@ class ConfigsServiceImplTest {
     }
 
     @Test
+    void createConfig_ShouldThrowException_WhenTimeZoneIsInvalid() {
+        CreateConfigCommand command = mock(CreateConfigCommand.class);
+        when(command.getName()).thenReturn("new-config");
+        when(command.getCronTimeZone()).thenReturn("Invalid/TimeZone");
+
+        assertThatThrownBy(() -> configsService.createConfig(command))
+                .isInstanceOf(InvalidRequestException.class)
+                .hasMessageContaining("Invalid cron time zone");
+    }
+
+    @Test
+    void createConfig_ShouldThrowException_WhenCronExpressionIsInvalid() {
+        CreateConfigCommand command = mock(CreateConfigCommand.class);
+        when(command.getName()).thenReturn("new-config");
+        when(command.getCronExpression()).thenReturn("invalid-cron");
+
+        assertThatThrownBy(() -> configsService.createConfig(command))
+                .isInstanceOf(InvalidRequestException.class)
+                .hasMessageContaining("Invalid cron expression");
+    }
+
+    @Test
+    void saveConfig_ShouldThrowException_WhenTimeZoneIsInvalid() {
+        UpdateConfigCommand command = mock(UpdateConfigCommand.class);
+        when(command.getName()).thenReturn("existing");
+        when(command.getEnabled()).thenReturn(Optional.empty());
+        when(command.getCronTimeZone()).thenReturn(Optional.of("Invalid/TimeZone"));
+
+        when(hubConfigRepository.findByName("existing")).thenReturn(Optional.of(new HubConfig()));
+
+        assertThatThrownBy(() -> configsService.saveConfig(command))
+                .isInstanceOf(InvalidRequestException.class)
+                .hasMessageContaining("Invalid cron time zone");
+    }
+
+    @Test
+    void saveConfig_ShouldThrowException_WhenCronExpressionIsInvalid() {
+        UpdateConfigCommand command = mock(UpdateConfigCommand.class);
+        when(command.getName()).thenReturn("existing");
+        when(command.getEnabled()).thenReturn(Optional.empty());
+        when(command.getCronExpression()).thenReturn(Optional.of("invalid-cron"));
+
+        when(hubConfigRepository.findByName("existing")).thenReturn(Optional.of(new HubConfig()));
+
+        assertThatThrownBy(() -> configsService.saveConfig(command))
+                .isInstanceOf(InvalidRequestException.class)
+                .hasMessageContaining("Invalid cron expression");
+    }
+
+    @Test
+    @SuppressWarnings("null")
+    void createConfig_ShouldSucceed_WhenCronAndTimeZoneAreValid() {
+        CreateConfigCommand command = mock(CreateConfigCommand.class);
+        when(command.getName()).thenReturn("valid-config");
+        when(command.getCronExpression()).thenReturn("0 0 9 * * *");
+        when(command.getCronTimeZone()).thenReturn("Asia/Taipei");
+
+        when(hubConfigRepository.findByName("valid-config")).thenReturn(Optional.empty());
+        when(hubConfigRepository.save(any())).thenAnswer(i -> i.getArgument(0));
+
+        HubConfig created = configsService.createConfig(command);
+
+        assertThat(created.getCronExpression()).isEqualTo("0 0 9 * * *");
+        assertThat(created.getCronTimeZone()).isEqualTo("Asia/Taipei");
+    }
+
+    @Test
+    @SuppressWarnings("null")
+    void saveConfig_ShouldSucceed_WhenUpdatingWithValidCronAndTimeZone() {
+        UpdateConfigCommand command = mock(UpdateConfigCommand.class);
+        when(command.getName()).thenReturn("existing");
+        when(command.getEnabled()).thenReturn(Optional.empty());
+        when(command.getCronExpression()).thenReturn(Optional.of("0 0 12 * * *"));
+        when(command.getCronTimeZone()).thenReturn(Optional.of("UTC"));
+
+        when(command.getYoutubeApiKey()).thenReturn(Optional.empty());
+        when(command.getClientId()).thenReturn(Optional.empty());
+        when(command.getClientSecret()).thenReturn(Optional.empty());
+        when(command.getAutoStartFetchScheduler()).thenReturn(Optional.empty());
+        when(command.getSchedulerType()).thenReturn(Optional.empty());
+        when(command.getFixedRate()).thenReturn(Optional.empty());
+
+        HubConfig existing = new HubConfig();
+        existing.setName("existing");
+        when(hubConfigRepository.findByName("existing")).thenReturn(Optional.of(existing));
+        when(hubConfigRepository.save(any())).thenAnswer(i -> i.getArgument(0));
+        // Return non-empty list to avoid default config logic
+        when(hubConfigRepository.findAllByEnabledTrue()).thenReturn(List.of(new HubConfig()));
+
+        HubConfig updated = configsService.saveConfig(command);
+
+        assertThat(updated.getCronExpression()).isEqualTo("0 0 12 * * *");
+        assertThat(updated.getCronTimeZone()).isEqualTo("UTC");
+    }
+
+    @SuppressWarnings("null")
+    @Test
     void createConfig_ShouldThrowException_WhenNameIsDefault() {
         CreateConfigCommand command = mock(CreateConfigCommand.class);
         when(command.getName()).thenReturn("default");
@@ -139,6 +238,8 @@ class ConfigsServiceImplTest {
         CreateConfigCommand command = mock(CreateConfigCommand.class);
         when(command.getName()).thenReturn("new-config");
         when(command.getEnabled()).thenReturn(true);
+        when(command.getAutoStartFetchScheduler()).thenReturn(true);
+        when(command.getSchedulerType()).thenReturn(SchedulerType.FIXED_RATE);
 
         HubConfig existingEnabled = new HubConfig();
         existingEnabled.setName("old-config");
@@ -152,6 +253,8 @@ class ConfigsServiceImplTest {
 
         assertThat(created.getName()).isEqualTo("new-config");
         assertThat(created.getEnabled()).isTrue();
+        assertThat(created.getAutoStartFetchScheduler()).isTrue();
+        assertThat(created.getSchedulerType()).isEqualTo(SchedulerType.FIXED_RATE);
         assertThat(existingEnabled.getEnabled()).isFalse();
         verify(hubConfigRepository).saveAll(anyList());
     }
@@ -260,6 +363,11 @@ class ConfigsServiceImplTest {
         when(command.getYoutubeApiKey()).thenReturn(Optional.of("new-key"));
         when(command.getClientId()).thenReturn(Optional.empty());
         when(command.getClientSecret()).thenReturn(Optional.empty());
+        when(command.getAutoStartFetchScheduler()).thenReturn(Optional.of(true));
+        when(command.getSchedulerType()).thenReturn(Optional.empty());
+        when(command.getFixedRate()).thenReturn(Optional.empty());
+        when(command.getCronExpression()).thenReturn(Optional.empty());
+        when(command.getCronTimeZone()).thenReturn(Optional.empty());
 
         HubConfig existingConfig = new HubConfig();
         existingConfig.setName(configName);
@@ -274,6 +382,7 @@ class ConfigsServiceImplTest {
 
         assertThat(updated.getEnabled()).isTrue();
         assertThat(updated.getYoutubeApiKey()).isEqualTo("new-key");
+        assertThat(updated.getAutoStartFetchScheduler()).isTrue();
         verify(hubConfigRepository).save(existingConfig);
     }
 
@@ -302,12 +411,22 @@ class ConfigsServiceImplTest {
         HubConfig dbConfig = new HubConfig();
         dbConfig.setName("custom");
         dbConfig.setEnabled(null);
+        dbConfig.setFixedRate(null);
+        dbConfig.setAutoStartFetchScheduler(null);
+        dbConfig.setSchedulerType(null);
+        dbConfig.setCronExpression(null);
+        dbConfig.setCronTimeZone("");
         // enabled is null, apiKey is null
 
         HubConfig defaultConfig = new HubConfig();
         defaultConfig.setEnabled(true);
         defaultConfig.setYoutubeApiKey("default-key");
         defaultConfig.setClientId("default-client");
+        defaultConfig.setFixedRate(123L);
+        defaultConfig.setAutoStartFetchScheduler(true);
+        defaultConfig.setSchedulerType(SchedulerType.CRON);
+        defaultConfig.setCronExpression("0 0 * * * *");
+        defaultConfig.setCronTimeZone("UTC");
 
         when(hubConfigRepository.findByName("custom")).thenReturn(Optional.of(dbConfig));
         when(defaultConfigFactory.create(defaultProperties)).thenReturn(defaultConfig);
@@ -317,6 +436,11 @@ class ConfigsServiceImplTest {
         assertThat(result.getEnabled()).isTrue();
         assertThat(result.getYoutubeApiKey()).isEqualTo("default-key");
         assertThat(result.getClientId()).isEqualTo("default-client");
+        assertThat(result.getFixedRate()).isEqualTo(123L);
+        assertThat(result.getAutoStartFetchScheduler()).isTrue();
+        assertThat(result.getSchedulerType()).isEqualTo(SchedulerType.CRON);
+        assertThat(result.getCronExpression()).isEqualTo("0 0 * * * *");
+        assertThat(result.getCronTimeZone()).isEqualTo("UTC");
     }
 
     @Test
@@ -370,6 +494,11 @@ class ConfigsServiceImplTest {
         when(command.getYoutubeApiKey()).thenReturn(Optional.empty());
         when(command.getClientId()).thenReturn(Optional.empty());
         when(command.getClientSecret()).thenReturn(Optional.empty());
+        when(command.getAutoStartFetchScheduler()).thenReturn(Optional.empty());
+        when(command.getSchedulerType()).thenReturn(Optional.empty());
+        when(command.getFixedRate()).thenReturn(Optional.empty());
+        when(command.getCronExpression()).thenReturn(Optional.empty());
+        when(command.getCronTimeZone()).thenReturn(Optional.empty());
 
         when(hubConfigRepository.findByName(configName)).thenReturn(Optional.empty());
         when(hubConfigRepository.save(any())).thenAnswer(i -> i.getArgument(0));
@@ -396,6 +525,11 @@ class ConfigsServiceImplTest {
         when(command.getYoutubeApiKey()).thenReturn(Optional.empty());
         when(command.getClientId()).thenReturn(Optional.empty());
         when(command.getClientSecret()).thenReturn(Optional.empty());
+        when(command.getAutoStartFetchScheduler()).thenReturn(Optional.empty());
+        when(command.getSchedulerType()).thenReturn(Optional.empty());
+        when(command.getFixedRate()).thenReturn(Optional.empty());
+        when(command.getCronExpression()).thenReturn(Optional.empty());
+        when(command.getCronTimeZone()).thenReturn(Optional.empty());
 
         HubConfig otherConfig = new HubConfig();
         otherConfig.setName("other");
@@ -423,6 +557,11 @@ class ConfigsServiceImplTest {
         when(command.getYoutubeApiKey()).thenReturn(Optional.empty());
         when(command.getClientId()).thenReturn(Optional.empty());
         when(command.getClientSecret()).thenReturn(Optional.empty());
+        when(command.getAutoStartFetchScheduler()).thenReturn(Optional.empty());
+        when(command.getSchedulerType()).thenReturn(Optional.empty());
+        when(command.getFixedRate()).thenReturn(Optional.empty());
+        when(command.getCronExpression()).thenReturn(Optional.empty());
+        when(command.getCronTimeZone()).thenReturn(Optional.empty());
 
         HubConfig currentConfig = new HubConfig();
         currentConfig.setName(configName);
@@ -465,6 +604,9 @@ class ConfigsServiceImplTest {
         dbConfig.setEnabled(false);
         dbConfig.setYoutubeApiKey("existing-key");
         dbConfig.setClientId("existing-client");
+        dbConfig.setSchedulerType(SchedulerType.FIXED_RATE);
+        dbConfig.setCronExpression("existing-cron");
+        dbConfig.setCronTimeZone("existing-zone");
 
         when(hubConfigRepository.findByName("custom")).thenReturn(Optional.of(dbConfig));
 
@@ -472,6 +614,9 @@ class ConfigsServiceImplTest {
         defaultConfig.setEnabled(true);
         defaultConfig.setYoutubeApiKey("default-key");
         defaultConfig.setClientId("default-client");
+        defaultConfig.setSchedulerType(SchedulerType.CRON);
+        defaultConfig.setCronExpression("default-cron");
+        defaultConfig.setCronTimeZone("default-zone");
         when(defaultConfigFactory.create(defaultProperties)).thenReturn(defaultConfig);
 
         HubConfig result = configsService.getResolvedConfig("custom");
@@ -479,6 +624,9 @@ class ConfigsServiceImplTest {
         assertThat(result.getEnabled()).isFalse();
         assertThat(result.getYoutubeApiKey()).isEqualTo("existing-key");
         assertThat(result.getClientId()).isEqualTo("existing-client");
+        assertThat(result.getSchedulerType()).isEqualTo(SchedulerType.FIXED_RATE);
+        assertThat(result.getCronExpression()).isEqualTo("existing-cron");
+        assertThat(result.getCronTimeZone()).isEqualTo("existing-zone");
     }
 
     @SuppressWarnings("null")
@@ -492,5 +640,32 @@ class ConfigsServiceImplTest {
         assertThatThrownBy(() -> configsService.getAllConfigs())
                 .isInstanceOf(ConfigCreationException.class)
                 .hasMessageContaining("Cannot create default config");
+    }
+
+    @Test
+    void getTimeZones_ShouldReturnSortedAndFilteredList() {
+        // Set a specific timezone to ensure deterministic sorting and full code coverage
+        // regardless of the machine's actual timezone.
+        java.util.TimeZone originalTimeZone = java.util.TimeZone.getDefault();
+        try {
+            // Set to New York so it's different from Tokyo and Taipei
+            java.util.TimeZone.setDefault(java.util.TimeZone.getTimeZone("America/New_York"));
+
+            List<TimeZoneOption> timeZones = configsService.getTimeZones();
+
+            assertThat(timeZones).isNotEmpty();
+            // Check filtering
+            assertThat(timeZones).noneMatch(tz -> tz.id().startsWith("Etc/"));
+            assertThat(timeZones).noneMatch(tz -> tz.id().startsWith("SystemV/"));
+            assertThat(timeZones).allMatch(tz -> tz.id().contains("/"));
+
+            // Check sorting: System Default (NY) -> Tokyo -> Taipei -> Others
+            assertThat(timeZones.get(0).id()).isEqualTo("America/New_York");
+            assertThat(timeZones.get(1).id()).isEqualTo("Asia/Tokyo");
+            assertThat(timeZones.get(2).id()).isEqualTo("Asia/Taipei");
+        } finally {
+            // Always restore the original timezone to avoid affecting other tests
+            java.util.TimeZone.setDefault(originalTimeZone);
+        }
     }
 }

@@ -23,9 +23,12 @@
  *===========================================================================*/
 package ch.lin.youtube.hub.backend.api.app.service;
 
+import java.util.List;
+
 import ch.lin.youtube.hub.backend.api.app.service.command.CreateConfigCommand;
 import ch.lin.youtube.hub.backend.api.app.service.command.UpdateConfigCommand;
 import ch.lin.youtube.hub.backend.api.app.service.model.AllConfigsData;
+import ch.lin.youtube.hub.backend.api.app.service.model.TimeZoneOption;
 import ch.lin.youtube.hub.backend.api.domain.model.HubConfig;
 
 /**
@@ -115,4 +118,11 @@ public interface ConfigsService {
      * return a valid configuration.
      */
     HubConfig getResolvedConfig(String configName);
+
+    /**
+     * Retrieves a list of clean and sorted time zones.
+     *
+     * @return A list of {@link TimeZoneOption} containing ID and display name.
+     */
+    List<TimeZoneOption> getTimeZones();
 }

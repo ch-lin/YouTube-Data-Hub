@@ -26,6 +26,8 @@ package ch.lin.youtube.hub.backend.api.domain.model;
 import static ch.lin.youtube.hub.backend.api.domain.model.HubConfig.TABLE_NAME;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import jakarta.validation.constraints.NotNull;
@@ -46,8 +48,9 @@ import lombok.Setter;
 @Setter
 @NoArgsConstructor
 @AllArgsConstructor
-@EqualsAndHashCode(of = {"name", "enabled", "youtubeApiKey", "clientId",
-    "clientSecret"}, callSuper = false)
+@EqualsAndHashCode(of = {"name", "enabled", "youtubeApiKey", "clientId", "clientSecret",
+    "autoStartFetchScheduler", "schedulerType", "fixedRate", "cronExpression",
+    "cronTimeZone"}, callSuper = false)
 public class HubConfig {
 
     /**
@@ -79,6 +82,31 @@ public class HubConfig {
      * The name of the client secret column in the database.
      */
     public static final String CLIENT_SECRET_COLUMN = "client_secret";
+
+    /**
+     * The name of the auto start fetch scheduler column in the database.
+     */
+    public static final String AUTO_START_FETCH_SCHEDULER_COLUMN = "auto_start_fetch_scheduler";
+
+    /**
+     * The name of the scheduler type column in the database.
+     */
+    public static final String SCHEDULER_TYPE_COLUMN = "scheduler_type";
+
+    /**
+     * The name of the fixed rate column in the database.
+     */
+    public static final String FIXED_RATE_COLUMN = "fixed_rate";
+
+    /**
+     * The name of the cron expression column in the database.
+     */
+    public static final String CRON_EXPRESSION_COLUMN = "cron_expression";
+
+    /**
+     * The name of the cron time zone column in the database.
+     */
+    public static final String CRON_TIME_ZONE_COLUMN = "cron_time_zone";
 
     /**
      * The primary key and unique name for this configuration profile (e.g.,
@@ -114,4 +142,36 @@ public class HubConfig {
      */
     @Column(name = HubConfig.CLIENT_SECRET_COLUMN)
     private String clientSecret;
+
+    /**
+     * A flag to indicate whether the fetch scheduler should start
+     * automatically.
+     */
+    @Column(name = HubConfig.AUTO_START_FETCH_SCHEDULER_COLUMN)
+    private Boolean autoStartFetchScheduler = false;
+
+    /**
+     * The type of scheduler to use (e.g., "FIXED_RATE" or "CRON").
+     */
+    @Enumerated(EnumType.STRING)
+    @Column(name = HubConfig.SCHEDULER_TYPE_COLUMN)
+    private SchedulerType schedulerType;
+
+    /**
+     * The fixed rate for the scheduler in milliseconds.
+     */
+    @Column(name = HubConfig.FIXED_RATE_COLUMN)
+    private Long fixedRate = 86400000L;
+
+    /**
+     * The cron expression for the scheduler.
+     */
+    @Column(name = HubConfig.CRON_EXPRESSION_COLUMN)
+    private String cronExpression;
+
+    /**
+     * The time zone for the cron expression (e.g., "Asia/Taipei", "UTC").
+     */
+    @Column(name = HubConfig.CRON_TIME_ZONE_COLUMN)
+    private String cronTimeZone;
 }

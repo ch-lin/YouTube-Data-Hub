@@ -24,6 +24,7 @@
 package ch.lin.youtube.hub.backend.api.controller;
 
 import java.net.URI;
+import java.util.List;
 import java.util.Optional;
 
 import org.springframework.http.ResponseEntity;
@@ -44,6 +45,7 @@ import ch.lin.youtube.hub.backend.api.app.service.model.AllConfigsData;
 import ch.lin.youtube.hub.backend.api.domain.model.HubConfig;
 import ch.lin.youtube.hub.backend.api.dto.AllConfigsResponse;
 import ch.lin.youtube.hub.backend.api.dto.CreateConfigRequest;
+import ch.lin.youtube.hub.backend.api.dto.TimeZoneResponse;
 import ch.lin.youtube.hub.backend.api.dto.UpdateConfigRequest;
 import jakarta.validation.Valid;
 
@@ -120,7 +122,12 @@ public class ConfigsController {
                 Boolean.TRUE.equals(request.getEnabled()),
                 request.getYoutubeApiKey(),
                 request.getClientId(),
-                request.getClientSecret());
+                request.getClientSecret(),
+                request.getAutoStartFetchScheduler(),
+                request.getSchedulerType(),
+                request.getFixedRate(),
+                request.getCronExpression(),
+                request.getCronTimeZone());
 
         HubConfig createdConfig = configsService.createConfig(command);
 
@@ -210,6 +217,11 @@ public class ConfigsController {
                 .youtubeApiKey(Optional.ofNullable(request.getYoutubeApiKey()))
                 .clientId(Optional.ofNullable(request.getClientId()))
                 .clientSecret(Optional.ofNullable(request.getClientSecret()))
+                .autoStartFetchScheduler(Optional.ofNullable(request.getAutoStartFetchScheduler()))
+                .schedulerType(Optional.ofNullable(request.getSchedulerType()))
+                .fixedRate(Optional.ofNullable(request.getFixedRate()))
+                .cronExpression(Optional.ofNullable(request.getCronExpression()))
+                .cronTimeZone(Optional.ofNullable(request.getCronTimeZone()))
                 .build();
 
         HubConfig savedConfig = configsService.saveConfig(command);
@@ -236,5 +248,19 @@ public class ConfigsController {
     public ResponseEntity<Void> deleteConfig(@PathVariable("name") String name) {
         configsService.deleteConfig(name);
         return ResponseEntity.noContent().build();
+    }
+
+    /**
+     * Retrieves a list of clean and sorted time zones.
+     *
+     * @return A {@link ResponseEntity} containing a list of
+     * {@link TimeZoneResponse}.
+     */
+    @GetMapping("/configs/timezones")
+    public ResponseEntity<List<TimeZoneResponse>> getTimeZones() {
+        List<TimeZoneResponse> timeZones = configsService.getTimeZones().stream()
+                .map(tz -> new TimeZoneResponse(tz.id(), tz.displayName()))
+                .toList();
+        return ResponseEntity.ok(timeZones);
     }
 }
