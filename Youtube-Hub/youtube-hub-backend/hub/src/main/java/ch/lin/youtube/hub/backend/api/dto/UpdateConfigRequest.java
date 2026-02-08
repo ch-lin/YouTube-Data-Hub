@@ -23,6 +23,7 @@
  *===========================================================================*/
 package ch.lin.youtube.hub.backend.api.dto;
 
+import ch.lin.youtube.hub.backend.api.domain.model.SchedulerType;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
@@ -73,4 +74,29 @@ public class UpdateConfigRequest {
      * authentication.
      */
     private String clientSecret;
+
+    /**
+     * Updates whether to automatically start the fetch scheduler.
+     */
+    private Boolean autoStartFetchScheduler;
+
+    /**
+     * Updates the type of scheduler to use.
+     */
+    private SchedulerType schedulerType;
+
+    /**
+     * Updates the fixed rate for the scheduler in milliseconds.
+     */
+    private Long fixedRate;
+
+    /**
+     * Updates the cron expression for the scheduler.
+     */
+    private String cronExpression;
+
+    /**
+     * Updates the time zone for the cron expression.
+     */
+    private String cronTimeZone;
 }

@@ -47,10 +47,20 @@ type HubConfig = {
   youtubeApiKey: string;
   clientId: string;
   clientSecret: string;
+  autoStartFetchScheduler?: boolean;
+  schedulerType?: 'FIXED_RATE' | 'CRON';
+  fixedRate?: number;
+  cronExpression?: string;
+  cronTimeZone?: string;
 };
 
 const DOWNLOADER_API_URL = "/api";
 const HUB_API_URL = "/api/hub"; // Assuming a separate proxy path for the Hub API
+
+type TimeZoneOption = {
+  id: string;
+  displayName: string;
+};
 
 export default function ConfigsPage() {
   const [activeTab, setActiveTab] = useState<'downloader' | 'hub'>('downloader');
@@ -96,6 +106,7 @@ export default function ConfigsPage() {
   const [isHubDeleting, setIsHubDeleting] = useState(false);
   const [isCreatingNewHub, setIsCreatingNewHub] = useState(false);
   const [previousSelectedHubConfig, setPreviousSelectedHubConfig] = useState<string>('');
+  const [timeZones, setTimeZones] = useState<TimeZoneOption[]>([]);
 
   // --- Downloader Effects & Handlers ---
 
@@ -337,6 +348,24 @@ export default function ConfigsPage() {
     fetchHubConfigs();
   }, []);
 
+  // Fetch time zones when the hub tab is active
+  useEffect(() => {
+    if (activeTab === 'hub') {
+      const fetchTimeZones = async () => {
+        try {
+          const response = await fetch(`${HUB_API_URL}/configs/timezones`);
+          if (response.ok) {
+            const data = await response.json();
+            setTimeZones(data);
+          }
+        } catch (error) {
+          console.error("Failed to fetch time zones", error);
+        }
+      };
+      fetchTimeZones();
+    }
+  }, [activeTab]);
+
   // Fetch the details of the selected hub configuration
   useEffect(() => {
     const fetchHubConfigDetails = async () => {
@@ -388,7 +417,12 @@ export default function ConfigsPage() {
       enabled: false,
       youtubeApiKey: '',
       clientId: '',
-      clientSecret: ''
+      clientSecret: '',
+      autoStartFetchScheduler: false,
+      schedulerType: 'CRON',
+      fixedRate: 86400000,
+      cronExpression: '0 0 9,15,21 * * *',
+      cronTimeZone: 'Asia/Taipei'
     });
     setHubSaveStatus(null);
   };
@@ -995,6 +1029,78 @@ export default function ConfigsPage() {
                       />
                     </td>
                   </tr>
+                  <tr>
+                    <td className="px-3 py-4 text-sm font-medium text-gray-900 dark:text-gray-100">Auto Start Fetch Scheduler</td>
+                    <td className="px-3 py-4 text-sm text-gray-500 dark:text-gray-300">
+                      <input
+                        type="checkbox"
+                        name="autoStartFetchScheduler"
+                        checked={hubConfigDetails.autoStartFetchScheduler || false}
+                        onChange={handleHubDetailChange}
+                        className="h-5 w-5 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                      />
+                    </td>
+                  </tr>
+                  <tr>
+                    <td className="px-3 py-4 text-sm font-medium text-gray-900 dark:text-gray-100">Scheduler Type</td>
+                    <td className="px-3 py-4 text-sm text-gray-500 dark:text-gray-300">
+                      <select
+                        name="schedulerType"
+                        value={hubConfigDetails.schedulerType || 'FIXED_RATE'}
+                        onChange={handleHubDetailChange}
+                        className="w-full bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 rounded-md shadow-sm p-2"
+                      >
+                        <option value="FIXED_RATE">Fixed Rate</option>
+                        <option value="CRON">Cron</option>
+                      </select>
+                    </td>
+                  </tr>
+                  {(!hubConfigDetails.schedulerType || hubConfigDetails.schedulerType === 'FIXED_RATE') && (
+                    <tr>
+                      <td className="px-3 py-4 text-sm font-medium text-gray-900 dark:text-gray-100">Fixed Rate (ms)</td>
+                      <td className="px-3 py-4 text-sm text-gray-500 dark:text-gray-300">
+                        <input
+                          type="number"
+                          name="fixedRate"
+                          value={hubConfigDetails.fixedRate || ''}
+                          onChange={handleHubDetailChange}
+                          className="w-full font-mono bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 rounded-md shadow-sm p-2"
+                        />
+                      </td>
+                    </tr>
+                  )}
+                  {hubConfigDetails.schedulerType === 'CRON' && (
+                    <>
+                      <tr>
+                        <td className="px-3 py-4 text-sm font-medium text-gray-900 dark:text-gray-100">Cron Expression</td>
+                        <td className="px-3 py-4 text-sm text-gray-500 dark:text-gray-300">
+                          <input
+                            type="text"
+                            name="cronExpression"
+                            value={hubConfigDetails.cronExpression || ''}
+                            onChange={handleHubDetailChange}
+                            className="w-full font-mono bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 rounded-md shadow-sm p-2"
+                            placeholder="0 0 8 * * *"
+                          />
+                        </td>
+                      </tr>
+                      <tr>
+                        <td className="px-3 py-4 text-sm font-medium text-gray-900 dark:text-gray-100">Cron Time Zone</td>
+                        <td className="px-3 py-4 text-sm text-gray-500 dark:text-gray-300">
+                          <select
+                            name="cronTimeZone"
+                            value={hubConfigDetails.cronTimeZone || ''}
+                            onChange={handleHubDetailChange}
+                            className="w-full bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 rounded-md shadow-sm p-2"
+                          >
+                            {timeZones.map((tz) => (
+                              <option key={tz.id} value={tz.id}>{tz.displayName}</option>
+                            ))}
+                          </select>
+                        </td>
+                      </tr>
+                    </>
+                  )}
                 </tbody>
               </table>
             </div>

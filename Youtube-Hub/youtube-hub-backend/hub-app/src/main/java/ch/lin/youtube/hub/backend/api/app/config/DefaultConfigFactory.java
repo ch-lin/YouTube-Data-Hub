@@ -52,6 +52,11 @@ public class DefaultConfigFactory {
                 properties.getEnabled(),
                 properties.getYoutubeApiKey(),
                 properties.getClientId(),
-                properties.getClientSecret());
+                properties.getClientSecret(),
+                properties.getAutoStartFetchScheduler(),
+                properties.getSchedulerType(),
+                properties.getFixedRate(),
+                properties.getCronExpression(),
+                properties.getCronTimeZone());
     }
 }

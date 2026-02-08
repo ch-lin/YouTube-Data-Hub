@@ -47,9 +47,12 @@ import ch.lin.youtube.hub.backend.api.app.service.ConfigsService;
 import ch.lin.youtube.hub.backend.api.app.service.command.CreateConfigCommand;
 import ch.lin.youtube.hub.backend.api.app.service.command.UpdateConfigCommand;
 import ch.lin.youtube.hub.backend.api.app.service.model.AllConfigsData;
+import ch.lin.youtube.hub.backend.api.app.service.model.TimeZoneOption;
 import ch.lin.youtube.hub.backend.api.domain.model.HubConfig;
+import ch.lin.youtube.hub.backend.api.domain.model.SchedulerType;
 import ch.lin.youtube.hub.backend.api.dto.AllConfigsResponse;
 import ch.lin.youtube.hub.backend.api.dto.CreateConfigRequest;
+import ch.lin.youtube.hub.backend.api.dto.TimeZoneResponse;
 import ch.lin.youtube.hub.backend.api.dto.UpdateConfigRequest;
 
 @ExtendWith(MockitoExtension.class)
@@ -90,6 +93,13 @@ class ConfigsControllerTest {
         createRequest.setName("new-config");
         createRequest.setEnabled(true);
         createRequest.setYoutubeApiKey("key");
+        createRequest.setClientId("client-id");
+        createRequest.setClientSecret("client-secret");
+        createRequest.setAutoStartFetchScheduler(true);
+        createRequest.setSchedulerType(SchedulerType.FIXED_RATE);
+        createRequest.setFixedRate(1000L);
+        createRequest.setCronExpression("cron");
+        createRequest.setCronTimeZone("UTC");
 
         HubConfig created = new HubConfig();
         created.setName("new-config");
@@ -106,6 +116,14 @@ class ConfigsControllerTest {
         verify(configsService).createConfig(captor.capture());
         assertThat(captor.getValue().getName()).isEqualTo("new-config");
         assertThat(captor.getValue().getEnabled()).isTrue();
+        assertThat(captor.getValue().getYoutubeApiKey()).isEqualTo("key");
+        assertThat(captor.getValue().getClientId()).isEqualTo("client-id");
+        assertThat(captor.getValue().getClientSecret()).isEqualTo("client-secret");
+        assertThat(captor.getValue().getAutoStartFetchScheduler()).isTrue();
+        assertThat(captor.getValue().getSchedulerType()).isEqualTo(SchedulerType.FIXED_RATE);
+        assertThat(captor.getValue().getFixedRate()).isEqualTo(1000L);
+        assertThat(captor.getValue().getCronExpression()).isEqualTo("cron");
+        assertThat(captor.getValue().getCronTimeZone()).isEqualTo("UTC");
     }
 
     @Test
@@ -132,6 +150,14 @@ class ConfigsControllerTest {
     void saveConfig_ShouldUpdateAndReturnConfig() {
         UpdateConfigRequest updateRequest = new UpdateConfigRequest();
         updateRequest.setEnabled(true);
+        updateRequest.setYoutubeApiKey("new-key");
+        updateRequest.setClientId("new-client-id");
+        updateRequest.setClientSecret("new-client-secret");
+        updateRequest.setAutoStartFetchScheduler(true);
+        updateRequest.setSchedulerType(SchedulerType.CRON);
+        updateRequest.setFixedRate(2000L);
+        updateRequest.setCronExpression("cron2");
+        updateRequest.setCronTimeZone("Asia/Taipei");
 
         HubConfig saved = new HubConfig();
         saved.setName("test");
@@ -149,6 +175,14 @@ class ConfigsControllerTest {
         verify(configsService).saveConfig(captor.capture());
         assertThat(captor.getValue().getName()).isEqualTo("test");
         assertThat(captor.getValue().getEnabled()).isPresent().contains(true);
+        assertThat(captor.getValue().getYoutubeApiKey()).isPresent().contains("new-key");
+        assertThat(captor.getValue().getClientId()).isPresent().contains("new-client-id");
+        assertThat(captor.getValue().getClientSecret()).isPresent().contains("new-client-secret");
+        assertThat(captor.getValue().getAutoStartFetchScheduler()).isPresent().contains(true);
+        assertThat(captor.getValue().getSchedulerType()).isPresent().contains(SchedulerType.CRON);
+        assertThat(captor.getValue().getFixedRate()).isPresent().contains(2000L);
+        assertThat(captor.getValue().getCronExpression()).isPresent().contains("cron2");
+        assertThat(captor.getValue().getCronTimeZone()).isPresent().contains("Asia/Taipei");
     }
 
     @Test
@@ -157,5 +191,19 @@ class ConfigsControllerTest {
 
         verify(configsService).deleteConfig("test");
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.NO_CONTENT);
+    }
+
+    @Test
+    void getTimeZones_ShouldReturnList() {
+        TimeZoneOption option = new TimeZoneOption("Asia/Taipei", "(UTC+08:00) Asia/Taipei");
+        when(configsService.getTimeZones()).thenReturn(List.of(option));
+
+        ResponseEntity<List<TimeZoneResponse>> response = configsController.getTimeZones();
+        List<TimeZoneResponse> body = response.getBody();
+        Objects.requireNonNull(body);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(body).hasSize(1);
+        assertThat(body.get(0).id()).isEqualTo("Asia/Taipei");
     }
 }

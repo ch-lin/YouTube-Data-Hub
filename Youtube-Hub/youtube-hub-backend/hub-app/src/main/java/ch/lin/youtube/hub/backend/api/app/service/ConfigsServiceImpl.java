@@ -23,6 +23,10 @@
  *===========================================================================*/
 package ch.lin.youtube.hub.backend.api.app.service;
 
+import java.time.DateTimeException;
+import java.time.Instant;
+import java.time.ZoneId;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
@@ -30,6 +34,7 @@ import java.util.stream.Collectors;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.scheduling.support.CronExpression;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
@@ -43,6 +48,7 @@ import ch.lin.youtube.hub.backend.api.app.repository.HubConfigRepository;
 import ch.lin.youtube.hub.backend.api.app.service.command.CreateConfigCommand;
 import ch.lin.youtube.hub.backend.api.app.service.command.UpdateConfigCommand;
 import ch.lin.youtube.hub.backend.api.app.service.model.AllConfigsData;
+import ch.lin.youtube.hub.backend.api.app.service.model.TimeZoneOption;
 import ch.lin.youtube.hub.backend.api.domain.model.HubConfig;
 
 /**
@@ -133,6 +139,13 @@ public class ConfigsServiceImpl implements ConfigsService {
         newConfig.setYoutubeApiKey(command.getYoutubeApiKey());
         newConfig.setClientId(command.getClientId());
         newConfig.setClientSecret(command.getClientSecret());
+        newConfig.setAutoStartFetchScheduler(command.getAutoStartFetchScheduler());
+        newConfig.setSchedulerType(command.getSchedulerType());
+        newConfig.setFixedRate(command.getFixedRate());
+        validateCronExpression(command.getCronExpression());
+        newConfig.setCronExpression(command.getCronExpression());
+        validateCronTimeZone(command.getCronTimeZone());
+        newConfig.setCronTimeZone(command.getCronTimeZone());
 
         return hubConfigRepository.save(newConfig);
     }
@@ -228,6 +241,13 @@ public class ConfigsServiceImpl implements ConfigsService {
         command.getYoutubeApiKey().ifPresent(config::setYoutubeApiKey);
         command.getClientId().ifPresent(config::setClientId);
         command.getClientSecret().ifPresent(config::setClientSecret);
+        command.getAutoStartFetchScheduler().ifPresent(config::setAutoStartFetchScheduler);
+        command.getSchedulerType().ifPresent(config::setSchedulerType);
+        command.getFixedRate().ifPresent(config::setFixedRate);
+        command.getCronExpression().ifPresent(this::validateCronExpression);
+        command.getCronExpression().ifPresent(config::setCronExpression);
+        command.getCronTimeZone().ifPresent(this::validateCronTimeZone);
+        command.getCronTimeZone().ifPresent(config::setCronTimeZone);
 
         HubConfig savedConfig = hubConfigRepository.save(config);
 
@@ -288,6 +308,21 @@ public class ConfigsServiceImpl implements ConfigsService {
             if (!StringUtils.hasText(dbConfig.getClientId())) {
                 dbConfig.setClientId(defaultConfig.getClientId());
             }
+            if (dbConfig.getAutoStartFetchScheduler() == null) {
+                dbConfig.setAutoStartFetchScheduler(defaultConfig.getAutoStartFetchScheduler());
+            }
+            if (dbConfig.getSchedulerType() == null) {
+                dbConfig.setSchedulerType(defaultConfig.getSchedulerType());
+            }
+            if (dbConfig.getFixedRate() == null) {
+                dbConfig.setFixedRate(defaultConfig.getFixedRate());
+            }
+            if (!StringUtils.hasText(dbConfig.getCronExpression())) {
+                dbConfig.setCronExpression(defaultConfig.getCronExpression());
+            }
+            if (!StringUtils.hasText(dbConfig.getCronTimeZone())) {
+                dbConfig.setCronTimeZone(defaultConfig.getCronTimeZone());
+            }
             return dbConfig;
         }).orElseGet(this::findOrCreateDefaultConfig);
     }
@@ -312,5 +347,76 @@ public class ConfigsServiceImpl implements ConfigsService {
                 throw new ConfigCreationException("Cannot create default config. Application properties not found.");
             }
         });
+    }
+
+    /**
+     * {@inheritDoc}
+     * <p>
+     * Retrieves a list of available time zones, filtered and sorted for better
+     * user experience.
+     * <ul>
+     * <li>Filters out technical or deprecated IDs (e.g., "Etc/",
+     * "SystemV/").</li>
+     * <li>Formats the display name to include the current UTC offset (e.g.,
+     * "(UTC+08:00) Asia/Taipei").</li>
+     * <li>Sorts the list with specific priority: System Default > Asia/Tokyo >
+     * Asia/Taipei > Alphabetical order.</li>
+     * </ul>
+     */
+    @Override
+    public List<TimeZoneOption> getTimeZones() {
+        String systemZoneId = ZoneId.systemDefault().getId();
+        return ZoneId.getAvailableZoneIds().stream()
+                // Filter out technical or deprecated IDs (e.g., Etc/, SystemV/, 3-letter codes without slash)
+                .filter(id -> id.contains("/") && !id.startsWith("Etc/") && !id.startsWith("SystemV/"))
+                .map(id -> {
+                    ZoneId zoneId = ZoneId.of(id);
+                    String offset = zoneId.getRules().getOffset(Instant.now()).getId();
+                    String displayName = String.format("(UTC%s) %s", offset.equals("Z") ? "+00:00" : offset, id);
+                    return new TimeZoneOption(id, displayName);
+                })
+                .sorted(Comparator.comparingInt((TimeZoneOption o) -> {
+                    if (systemZoneId.equals(o.id())) {
+                        return 0;
+                    }
+                    if ("Asia/Tokyo".equals(o.id())) {
+                        return 1;
+                    }
+                    if ("Asia/Taipei".equals(o.id())) {
+                        return 2;
+                    }
+                    return 3;
+                }).thenComparing(TimeZoneOption::id))
+                .collect(Collectors.toList());
+    }
+
+    /**
+     * Validates the format of a Cron expression.
+     *
+     * @param cronExpression The Cron expression string to validate.
+     * @throws InvalidRequestException if the expression is not null/empty and
+     * is invalid.
+     */
+    private void validateCronExpression(String cronExpression) {
+        if (StringUtils.hasText(cronExpression) && !CronExpression.isValidExpression(cronExpression)) {
+            throw new InvalidRequestException("Invalid cron expression: " + cronExpression);
+        }
+    }
+
+    /**
+     * Validates that a given string is a valid time zone ID.
+     *
+     * @param cronTimeZone The time zone ID to validate (e.g., "Asia/Taipei").
+     * @throws InvalidRequestException if the time zone ID is not null/empty and
+     * is invalid.
+     */
+    private void validateCronTimeZone(String cronTimeZone) {
+        if (StringUtils.hasText(cronTimeZone)) {
+            try {
+                ZoneId.of(cronTimeZone);
+            } catch (DateTimeException e) {
+                throw new InvalidRequestException("Invalid cron time zone: " + cronTimeZone);
+            }
+        }
     }
 }

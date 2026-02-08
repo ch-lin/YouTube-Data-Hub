@@ -191,9 +191,10 @@ Moving beyond asset management, the platform is evolving into a data intelligenc
 ## ✅ TODO List
 
 - [ ] Add More MCP Endpoints
-- [ ] Add YouTube Data API Request Counter
-- [ ] Add YouTube Data API Fetch Scheduler
-- [ ] Save "Force Published After" UI Status
+- [O] Add YouTube Data API Request Counter
+- [O] Add YouTube Data API Fetch Scheduler
+- [O] Save "Force Published After" UI Status
+- [ ] Implement Quota Check before YouTube Data API Requests
 - [ ] Add Paging Feature in YouTube Hub's REST API to Avoid Out of Memory
 - [ ] Implement YouTube Statistics Processing Task
 - [ ] Refactor: Decouple UI from Core Service (Frontend-Backend Separation)

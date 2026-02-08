@@ -26,6 +26,7 @@ package ch.lin.youtube.hub.backend.api.app.config;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.stereotype.Component;
 
+import ch.lin.youtube.hub.backend.api.domain.model.SchedulerType;
 import lombok.Data;
 
 /**
@@ -74,4 +75,29 @@ public class HubDefaultProperties {
      * The default client secret for accessing downloader REST API.
      */
     private String clientSecret;
+
+    /**
+     * Whether to automatically start the fetch scheduler. Defaults to false.
+     */
+    private Boolean autoStartFetchScheduler = false;
+
+    /**
+     * The type of scheduler to use. Defaults to CRON.
+     */
+    private SchedulerType schedulerType = SchedulerType.CRON;
+
+    /**
+     * The fixed rate for the scheduler in milliseconds. Defaults to 24 hours.
+     */
+    private Long fixedRate = 86400000L;
+
+    /**
+     * The cron expression for the scheduler.
+     */
+    private String cronExpression = "0 0 9,15,21 * * *";
+
+    /**
+     * The time zone for the cron expression.
+     */
+    private String cronTimeZone = "Asia/Taipei";
 }
