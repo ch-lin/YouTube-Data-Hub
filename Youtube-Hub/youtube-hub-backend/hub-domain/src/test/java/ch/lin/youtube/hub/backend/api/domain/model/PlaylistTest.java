@@ -43,6 +43,7 @@ class PlaylistTest {
     private String playlistId;
     private String title;
     private OffsetDateTime processedAt;
+    private String lastPageToken;
     private Channel channel;
 
     @BeforeEach
@@ -51,8 +52,9 @@ class PlaylistTest {
         playlistId = "PL_x5XG1OV2P6uZZ5FSM9Ttw";
         title = "Google for Developers Playlist";
         processedAt = OffsetDateTime.now();
+        lastPageToken = "CAUQAA";
         channel = new Channel(); // A simple new Channel object is sufficient for these tests
-        playlist = new Playlist(playlistId, title, processedAt, channel, new HashSet<>());
+        playlist = new Playlist(playlistId, title, processedAt, lastPageToken, channel, new HashSet<>());
     }
 
     @Test
@@ -65,6 +67,7 @@ class PlaylistTest {
         p.setPlaylistId(playlistId);
         p.setTitle(title);
         p.setProcessedAt(processedAt);
+        p.setLastPageToken(lastPageToken);
         p.setChannel(channel);
         p.setItems(items);
 
@@ -72,6 +75,7 @@ class PlaylistTest {
         assertEquals(playlistId, p.getPlaylistId());
         assertEquals(title, p.getTitle());
         assertEquals(processedAt, p.getProcessedAt());
+        assertEquals(lastPageToken, p.getLastPageToken());
         assertEquals(channel, p.getChannel());
         assertEquals(items, p.getItems());
     }
@@ -84,6 +88,7 @@ class PlaylistTest {
         assertNull(p.getPlaylistId());
         assertNull(p.getTitle());
         assertNull(p.getProcessedAt());
+        assertNull(p.getLastPageToken());
         assertNull(p.getChannel());
         assertNull(p.getItems());
     }
@@ -91,31 +96,34 @@ class PlaylistTest {
     @Test
     void testAllArgsConstructor() {
         Set<Item> items = new HashSet<>();
-        Playlist p = new Playlist(playlistId, title, processedAt, channel, items);
+        Playlist p = new Playlist(playlistId, title, processedAt, lastPageToken, channel, items);
 
         assertNotNull(p);
         assertEquals(playlistId, p.getPlaylistId());
         assertEquals(title, p.getTitle());
         assertEquals(processedAt, p.getProcessedAt());
+        assertEquals(lastPageToken, p.getLastPageToken());
         assertEquals(channel, p.getChannel());
         assertEquals(items, p.getItems());
     }
 
     @Test
     void testEqualsAndHashCode() {
-        Playlist playlist2 = new Playlist(playlistId, title, processedAt, new Channel(), new HashSet<>());
-        Playlist playlist3 = new Playlist("differentId", title, processedAt, channel, new HashSet<>());
-        Playlist playlist4 = new Playlist(playlistId, "differentTitle", processedAt, channel, new HashSet<>());
+        Playlist playlist2 = new Playlist(playlistId, title, processedAt, lastPageToken, new Channel(), new HashSet<>());
+        Playlist playlist3 = new Playlist("differentId", title, processedAt, lastPageToken, channel, new HashSet<>());
+        Playlist playlist4 = new Playlist(playlistId, "differentTitle", processedAt, lastPageToken, channel, new HashSet<>());
 
         // Test for equality
         assertEquals(playlist, playlist2);
         assertEquals(playlist.hashCode(), playlist2.hashCode());
 
+        // Test for equality (Same ID, different non-key fields)
+        assertEquals(playlist, playlist4);
+        assertEquals(playlist.hashCode(), playlist4.hashCode());
+
         // Test for inequality
         assertNotEquals(playlist, playlist3);
         assertNotEquals(playlist.hashCode(), playlist3.hashCode());
-        assertNotEquals(playlist, playlist4);
-        assertNotEquals(playlist.hashCode(), playlist4.hashCode());
 
         // Test against null and other types
         assertNotEquals(playlist, null);

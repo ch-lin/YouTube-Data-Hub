@@ -104,13 +104,16 @@ class ChannelTest {
 
         // Test for equality
         assertEquals(channel1, channel2);
+        // Same ID, different title -> Should be equal now
+        assertEquals(channel1, channel4);
+
         assertNotEquals(channel1, channel3);
         assertNotEquals(channel2, channel3);
-        assertNotEquals(channel1, channel4);
 
         // Test hash code contract
         assertEquals(channel1.hashCode(), channel2.hashCode());
         assertNotEquals(channel1.hashCode(), channel3.hashCode());
+        assertEquals(channel1.hashCode(), channel4.hashCode());
 
         // Test against null and other types
         assertNotEquals(channel1, null);

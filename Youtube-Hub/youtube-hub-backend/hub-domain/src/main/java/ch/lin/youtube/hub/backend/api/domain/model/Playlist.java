@@ -60,7 +60,7 @@ import lombok.Setter;
 @Setter
 @NoArgsConstructor
 @AllArgsConstructor
-@EqualsAndHashCode(of = {"playlistId", "title", "processedAt"}, callSuper = false)
+@EqualsAndHashCode(of = {"playlistId"}, callSuper = false)
 public class Playlist extends BaseEntity {
 
     /**
@@ -87,6 +87,11 @@ public class Playlist extends BaseEntity {
      * The name of the processed at column in the database.
      */
     public static final String PROCESSED_AT = "processed_at";
+
+    /**
+     * The name of the last page token column in the database.
+     */
+    public static final String LAST_PAGE_TOKEN_COLUMN = "last_page_token";
 
     /**
      * The name of the channel column, used for the foreign key relationship.
@@ -120,6 +125,13 @@ public class Playlist extends BaseEntity {
      */
     @Column(name = Playlist.PROCESSED_AT, columnDefinition = "TIMESTAMP")
     private OffsetDateTime processedAt;
+
+    /**
+     * The token of the next page to be processed. This serves as a checkpoint
+     * for resuming interrupted jobs.
+     */
+    @Column(name = Playlist.LAST_PAGE_TOKEN_COLUMN)
+    private String lastPageToken;
 
     /**
      * The {@link Channel} to which this playlist belongs. This establishes a

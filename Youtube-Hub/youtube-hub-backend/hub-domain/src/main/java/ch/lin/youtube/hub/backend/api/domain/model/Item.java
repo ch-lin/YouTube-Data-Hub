@@ -63,8 +63,7 @@ import lombok.Setter;
 @Setter
 @NoArgsConstructor
 @AllArgsConstructor
-@EqualsAndHashCode(of = {"videoId", "title", "kind", "videoPublishedAt", "liveBroadcastContent", "scheduledStartTime",
-    "tag", "thumbnailUrl", "status", "description"}, callSuper = false)
+@EqualsAndHashCode(of = {"videoId"}, callSuper = false)
 public class Item extends BaseEntity {
 
     /**
