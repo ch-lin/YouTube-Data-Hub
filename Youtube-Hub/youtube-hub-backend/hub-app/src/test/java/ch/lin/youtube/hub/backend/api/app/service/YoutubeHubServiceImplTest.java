@@ -104,6 +104,8 @@ class YoutubeHubServiceImplTest {
     private ConfigsService configsService;
     @Mock
     private YoutubeApiUsageService youtubeApiUsageService;
+    @Mock
+    private YoutubeCheckpointService youtubeCheckpointService;
 
     private YoutubeHubServiceImpl service;
 
@@ -111,7 +113,7 @@ class YoutubeHubServiceImplTest {
     @SuppressWarnings("unused")
     void setUp() {
         service = new YoutubeHubServiceImpl(channelRepository, itemRepository, playlistRepository, tagRepository,
-                downloadInfoRepository, configsService, youtubeApiUsageService);
+                downloadInfoRepository, configsService, youtubeApiUsageService, youtubeCheckpointService);
         ReflectionTestUtils.setField(service, "downloaderServiceUrl", "http://localhost:8081");
 
         // Default to having sufficient quota for all tests to prevent QuotaExceededException
@@ -1161,7 +1163,7 @@ class YoutubeHubServiceImplTest {
 
     @Test
     @SuppressWarnings("null")
-    void processJob_ShouldHandleException_WhenSaveAllFails() {
+    void processJob_ShouldThrow_WhenSavePageProgressFails() {
         HubConfig config = new HubConfig();
         config.setYoutubeApiKey("test-key");
         when(configsService.getResolvedConfig(null)).thenReturn(config);
@@ -1174,8 +1176,8 @@ class YoutubeHubServiceImplTest {
         when(playlistRepository.findByPlaylistId("uploads1")).thenReturn(Optional.empty());
         when(playlistRepository.save(any())).thenAnswer(i -> i.getArgument(0));
 
-        // Mock saveAll to throw RuntimeException
-        when(itemRepository.saveAll(anyList())).thenThrow(new RuntimeException("DB Error"));
+        // Mock savePageProgress to throw RuntimeException
+        doThrow(new RuntimeException("DB Error")).when(youtubeCheckpointService).savePageProgress(any(), anyList(), any());
 
         String channelResponse = "{\"items\": [{\"contentDetails\": {\"relatedPlaylists\": {\"uploads\": \"uploads1\"}}, \"snippet\": {\"title\": \"Channel 1\"}}]}";
         String playlistItemsResponse = "{\"items\": [{\"snippet\": {\"resourceId\": {\"videoId\": \"v1\"}, \"publishedAt\": \"2023-01-01T10:00:00Z\"}}]}";
@@ -1191,11 +1193,9 @@ class YoutubeHubServiceImplTest {
                             .thenReturn(new HttpClient.Response(200, videosResponse));
                 })) {
 
-            Map<String, Object> result = service.processJob(null, null, null, null, false, null);
-
-            // The exception is caught and logged, processing continues.
-            // newItems count is incremented before saveAll.
-            assertThat(result.get("newItems")).isEqualTo(1);
+            assertThatThrownBy(() -> service.processJob(null, null, null, null, false, null))
+                    .isInstanceOf(RuntimeException.class)
+                    .hasMessage("DB Error");
             assertThat(mocked.constructed()).hasSize(1);
         }
     }
@@ -1879,7 +1879,7 @@ class YoutubeHubServiceImplTest {
             // Verify the created item has no scheduled start time
             @SuppressWarnings("unchecked")
             ArgumentCaptor<List<Item>> captor = ArgumentCaptor.forClass(List.class);
-            verify(itemRepository).saveAll(captor.capture());
+            verify(youtubeCheckpointService).savePageProgress(any(), captor.capture(), any());
             List<Item> savedItems = captor.getValue();
             assertThat(savedItems).hasSize(1);
             assertThat(savedItems.get(0).getScheduledStartTime()).isNull();
@@ -2344,7 +2344,7 @@ class YoutubeHubServiceImplTest {
 
             @SuppressWarnings("unchecked")
             ArgumentCaptor<List<Item>> captor = ArgumentCaptor.forClass(List.class);
-            verify(itemRepository).saveAll(captor.capture());
+            verify(youtubeCheckpointService).savePageProgress(any(), captor.capture(), any());
 
             List<Item> savedItems = captor.getValue();
             assertThat(savedItems.stream().filter(i -> i.getVideoId().equals("v1")).findFirst().orElseThrow().getThumbnailUrl()).isEqualTo("http://maxres");
@@ -2814,6 +2814,247 @@ class YoutubeHubServiceImplTest {
             ArgumentCaptor<Map<String, String>> headersCaptor = ArgumentCaptor.forClass(Map.class);
             verify(client).post(eq("/download"), any(), anyString(), headersCaptor.capture());
             assertThat(headersCaptor.getValue()).doesNotContainKey("Authorization");
+        }
+    }
+
+    @Test
+    @SuppressWarnings({"null", "unchecked"})
+    void processJob_ShouldResumeFromCheckpoint_WhenTokenExists() throws Exception {
+        HubConfig config = new HubConfig();
+        config.setYoutubeApiKey("test-key");
+        when(configsService.getResolvedConfig(null)).thenReturn(config);
+
+        Channel channel = new Channel();
+        channel.setChannelId("ch1");
+        channel.setTitle("Channel 1");
+        when(channelRepository.findAll()).thenReturn(List.of(channel));
+
+        Playlist playlist = new Playlist();
+        playlist.setPlaylistId("uploads1");
+        playlist.setLastPageToken("checkpointToken");
+        playlist.setChannel(channel);
+
+        when(playlistRepository.findByPlaylistId("uploads1")).thenReturn(Optional.of(playlist));
+        when(playlistRepository.save(any())).thenAnswer(i -> i.getArgument(0));
+
+        String channelResponse = "{\"items\": [{\"contentDetails\": {\"relatedPlaylists\": {\"uploads\": \"uploads1\"}}, \"snippet\": {\"title\": \"Channel 1\"}}]}";
+        String playlistItemsResponse = "{\"items\": []}";
+
+        try (MockedConstruction<HttpClient> mocked = mockConstruction(HttpClient.class,
+                (mock, context) -> {
+                    when(mock.get(eq("/youtube/v3/channels"), any(), any()))
+                            .thenReturn(new HttpClient.Response(200, channelResponse));
+                    when(mock.get(eq("/youtube/v3/playlistItems"), any(), any()))
+                            .thenReturn(new HttpClient.Response(200, playlistItemsResponse));
+                })) {
+
+            service.processJob(null, null, null, null, false, null);
+
+            HttpClient client = mocked.constructed().get(0);
+            ArgumentCaptor<Map<String, String>> paramsCaptor = ArgumentCaptor.forClass(Map.class);
+            verify(client).get(eq("/youtube/v3/playlistItems"), paramsCaptor.capture(), any());
+
+            assertThat(paramsCaptor.getValue()).containsEntry("pageToken", "checkpointToken");
+        }
+    }
+
+    @Test
+    @SuppressWarnings("null")
+    void processJob_ShouldSaveProgress_WhenQuotaExceeded_DuringProcessing() throws Exception {
+        HubConfig config = new HubConfig();
+        config.setYoutubeApiKey("test-key");
+        when(configsService.getResolvedConfig(null)).thenReturn(config);
+
+        Channel channel = new Channel();
+        channel.setChannelId("ch1");
+        channel.setTitle("Channel 1");
+        when(channelRepository.findAll()).thenReturn(List.of(channel));
+
+        Playlist playlist = new Playlist();
+        playlist.setPlaylistId("uploads1");
+        playlist.setLastPageToken("prevToken");
+        playlist.setChannel(channel);
+
+        when(playlistRepository.findByPlaylistId("uploads1")).thenReturn(Optional.of(playlist));
+
+        // v1 is new, v2 is existing
+        when(itemRepository.findByVideoId("v1")).thenReturn(Optional.empty());
+        Item existingItem = new Item();
+        existingItem.setVideoId("v2");
+        existingItem.setTitle("Old Title");
+        existingItem.setLiveBroadcastContent(LiveBroadcastContent.NONE);
+        existingItem.setScheduledStartTime(null);
+        when(itemRepository.findByVideoId("v2")).thenReturn(Optional.of(existingItem));
+
+        String channelResponse = "{\"items\": [{\"contentDetails\": {\"relatedPlaylists\": {\"uploads\": \"uploads1\"}}, \"snippet\": {\"title\": \"Channel 1\"}}]}";
+        String playlistItemsResponse = "{\"items\": ["
+                + "{\"snippet\": {\"resourceId\": {\"videoId\": \"v1\"}, \"publishedAt\": \"2023-01-01T10:00:00Z\"}},"
+                + "{\"snippet\": {\"resourceId\": {\"videoId\": \"v2\"}, \"publishedAt\": \"2023-01-01T09:00:00Z\"}}"
+                + "]}";
+        String videosResponseV1 = "{\"items\": [{\"id\": \"v1\", \"kind\": \"youtube#video\", \"snippet\": {\"title\": \"Video 1\", \"liveBroadcastContent\": \"none\"}}]}";
+
+        // Quota sequence:
+        // 1. channels -> true
+        // 2. playlistItems -> true
+        // 3. videos (v1) -> true
+        // 4. videos (v2) -> false (throws QuotaExceededException inside updateExistingItems)
+        lenient().when(youtubeApiUsageService.hasSufficientQuota(anyLong(), anyLong()))
+                .thenReturn(true)
+                .thenReturn(true)
+                .thenReturn(true)
+                .thenReturn(false);
+
+        try (MockedConstruction<HttpClient> mocked = mockConstruction(HttpClient.class,
+                (mock, context) -> {
+                    when(mock.get(eq("/youtube/v3/channels"), any(), any()))
+                            .thenReturn(new HttpClient.Response(200, channelResponse));
+                    when(mock.get(eq("/youtube/v3/playlistItems"), any(), any()))
+                            .thenReturn(new HttpClient.Response(200, playlistItemsResponse));
+                    when(mock.get(eq("/youtube/v3/videos"), any(), any()))
+                            .thenReturn(new HttpClient.Response(200, videosResponseV1));
+                })) {
+
+            service.processJob(null, null, null, null, false, null);
+
+            // Verify that savePageProgress was called with v1 and the previous token (not advancing)
+            @SuppressWarnings("unchecked")
+            ArgumentCaptor<List<Item>> itemsCaptor = ArgumentCaptor.forClass(List.class);
+            verify(youtubeCheckpointService).savePageProgress(eq(playlist), itemsCaptor.capture(), eq("prevToken"));
+
+            List<Item> savedItems = itemsCaptor.getValue();
+            assertThat(savedItems).hasSize(1);
+            assertThat(savedItems.get(0).getVideoId()).isEqualTo("v1");
+            assertThat(mocked.constructed()).hasSize(1);
+        }
+    }
+
+    @Test
+    @SuppressWarnings("null")
+    void processJob_ShouldHandleException_InItemLoop() {
+        HubConfig config = new HubConfig();
+        config.setYoutubeApiKey("test-key");
+        when(configsService.getResolvedConfig(null)).thenReturn(config);
+
+        Channel channel = new Channel();
+        channel.setChannelId("ch1");
+        channel.setTitle("Channel 1");
+        when(channelRepository.findAll()).thenReturn(List.of(channel));
+
+        when(playlistRepository.findByPlaylistId("uploads1")).thenReturn(Optional.empty());
+        when(playlistRepository.save(any())).thenAnswer(i -> i.getArgument(0));
+
+        String channelResponse = "{\"items\": [{\"contentDetails\": {\"relatedPlaylists\": {\"uploads\": \"uploads1\"}}, \"snippet\": {\"title\": \"Channel 1\"}}]}";
+        String playlistItemsResponse = "{\"items\": [{\"snippet\": {\"resourceId\": {\"videoId\": \"v1\"}, \"publishedAt\": \"2023-01-01T10:00:00Z\"}}]}";
+        String videosResponse = "{\"items\": [{\"id\": \"v1\", \"kind\": \"youtube#video\", \"snippet\": {\"title\": \"Video 1\", \"liveBroadcastContent\": \"none\"}}]}";
+
+        try (MockedConstruction<Item> mockedItem = mockConstruction(Item.class,
+                (mock, context) -> doThrow(new RuntimeException("Simulated Error")).when(mock).setPlaylist(any())); MockedConstruction<HttpClient> mockedClient = mockConstruction(HttpClient.class,
+                        (mock, context) -> {
+                            when(mock.get(eq("/youtube/v3/channels"), any(), any()))
+                                    .thenReturn(new HttpClient.Response(200, channelResponse));
+                            when(mock.get(eq("/youtube/v3/playlistItems"), any(), any()))
+                                    .thenReturn(new HttpClient.Response(200, playlistItemsResponse));
+                            when(mock.get(eq("/youtube/v3/videos"), any(), any()))
+                                    .thenReturn(new HttpClient.Response(200, videosResponse));
+                        })) {
+
+            service.processJob(null, null, null, null, false, null);
+
+            verify(youtubeCheckpointService).savePageProgress(any(), anyList(), any());
+            assertThat(mockedItem.constructed()).hasSize(1);
+            assertThat(mockedClient.constructed()).hasSize(1);
+        }
+    }
+
+    @Test
+    @SuppressWarnings("null")
+    void processJob_ShouldNotUpdateProcessedAt_WhenItemsMissingButTokenPresent() {
+        HubConfig config = new HubConfig();
+        config.setYoutubeApiKey("test-key");
+        when(configsService.getResolvedConfig(null)).thenReturn(config);
+
+        Channel channel = new Channel();
+        channel.setChannelId("ch1");
+        channel.setTitle("Channel 1");
+        when(channelRepository.findAll()).thenReturn(List.of(channel));
+
+        Playlist playlist = new Playlist();
+        playlist.setPlaylistId("uploads1");
+        playlist.setProcessedAt(OffsetDateTime.parse("2020-01-01T00:00:00Z"));
+        when(playlistRepository.findByPlaylistId("uploads1")).thenReturn(Optional.of(playlist));
+
+        String channelResponse = "{\"items\": [{\"contentDetails\": {\"relatedPlaylists\": {\"uploads\": \"uploads1\"}}, \"snippet\": {\"title\": \"Channel 1\"}}]}";
+        String playlistItemsResponse = "{\"nextPageToken\": \"token123\"}"; // Missing items
+
+        try (MockedConstruction<HttpClient> mocked = mockConstruction(HttpClient.class,
+                (mock, context) -> {
+                    when(mock.get(eq("/youtube/v3/channels"), any(), any())).thenReturn(new HttpClient.Response(200, channelResponse));
+                    when(mock.get(eq("/youtube/v3/playlistItems"), any(), any())).thenReturn(new HttpClient.Response(200, playlistItemsResponse));
+                })) {
+
+            service.processJob(null, null, null, null, false, null);
+
+            assertThat(playlist.getProcessedAt()).isEqualTo(OffsetDateTime.parse("2020-01-01T00:00:00Z"));
+            verify(playlistRepository, never()).save(any());
+            assertThat(mocked.constructed()).hasSize(1);
+        }
+    }
+
+    @Test
+    @SuppressWarnings("null")
+    void processJob_ShouldStopFetching_WhenOldVideoFound_WithNextPageToken() throws Exception {
+        HubConfig config = new HubConfig();
+        config.setYoutubeApiKey("test-key");
+        when(configsService.getResolvedConfig(null)).thenReturn(config);
+
+        Channel channel = new Channel();
+        channel.setChannelId("ch1");
+        channel.setTitle("Channel 1");
+        when(channelRepository.findAll()).thenReturn(List.of(channel));
+
+        OffsetDateTime t1 = OffsetDateTime.parse("2023-01-01T10:00:00Z"); // Old
+        OffsetDateTime t2 = OffsetDateTime.parse("2023-01-01T11:00:00Z"); // Last processed
+        OffsetDateTime t3 = OffsetDateTime.parse("2023-01-01T12:00:00Z"); // New
+
+        Playlist playlist = new Playlist();
+        playlist.setPlaylistId("uploads1");
+        playlist.setProcessedAt(t2);
+        playlist.setChannel(channel);
+
+        when(playlistRepository.findByPlaylistId("uploads1")).thenReturn(Optional.of(playlist));
+        when(playlistRepository.save(any())).thenAnswer(i -> i.getArgument(0));
+
+        // Mock item repo to return empty (new items)
+        when(itemRepository.findByVideoId(anyString())).thenReturn(Optional.empty());
+
+        String channelResponse = "{\"items\": [{\"contentDetails\": {\"relatedPlaylists\": {\"uploads\": \"uploads1\"}}, \"snippet\": {\"title\": \"Channel 1\"}}]}";
+
+        // Response has nextPageToken, v3 (new), v1 (old)
+        String playlistItemsResponse = "{"
+                + "\"nextPageToken\": \"tokenPage2\","
+                + "\"items\": ["
+                + "{\"snippet\": {\"resourceId\": {\"videoId\": \"v3\"}, \"publishedAt\": \"" + t3 + "\"}},"
+                + "{\"snippet\": {\"resourceId\": {\"videoId\": \"v1\"}, \"publishedAt\": \"" + t1 + "\"}}"
+                + "]}";
+
+        String videosResponse = "{\"items\": [{\"id\": \"v3\", \"kind\": \"youtube#video\", \"snippet\": {\"title\": \"Video 3\", \"liveBroadcastContent\": \"none\"}}]}";
+
+        try (MockedConstruction<HttpClient> mocked = mockConstruction(HttpClient.class,
+                (mock, context) -> {
+                    when(mock.get(eq("/youtube/v3/channels"), any(), any()))
+                            .thenReturn(new HttpClient.Response(200, channelResponse));
+                    when(mock.get(eq("/youtube/v3/playlistItems"), any(), any()))
+                            .thenReturn(new HttpClient.Response(200, playlistItemsResponse));
+                    when(mock.get(eq("/youtube/v3/videos"), any(), any()))
+                            .thenReturn(new HttpClient.Response(200, videosResponse));
+                })) {
+
+            service.processJob(null, null, null, null, false, null);
+
+            assertThat(playlist.getProcessedAt()).isEqualTo(t3);
+            assertThat(playlist.getLastPageToken()).isNull();
+            verify(playlistRepository).save(playlist);
+            assertThat(mocked.constructed()).hasSize(1);
         }
     }
 }

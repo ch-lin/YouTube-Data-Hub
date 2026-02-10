@@ -142,24 +142,19 @@ class ItemTest {
 
     @Test
     void testEqualsAndHashCode_WhenFieldChanges() {
-        // Change a field included in 'of' clause
-        item2.setTitle("A Different Title"); // title is in equals/hashCode
-        assertNotEquals(item1, item2);
-        assertNotEquals(item1.hashCode(), item2.hashCode());
+        // Change a field NOT included in 'of' clause (title)
+        item2.setTitle("A Different Title");
+        assertEquals(item1, item2, "Changing title should not affect equality as it is not part of the business key");
+        assertEquals(item1.hashCode(), item2.hashCode());
 
-        // Reset item2 and change description (also in equals/hashCode)
-        item2 = new Item(videoId, title, description, kind, videoPublishedAt, liveBroadcastContent, scheduledStartTime,
-                thumbnailUrl, status, playlist, tag, null);
+        // Change another field NOT included in 'of' clause (description)
         item2.setDescription("A different description");
-        assertNotEquals(item1, item2);
-        assertNotEquals(item1.hashCode(), item2.hashCode());
+        assertEquals(item1, item2, "Changing description should not affect equality");
+        assertEquals(item1.hashCode(), item2.hashCode());
 
-        // Change a field NOT included in 'of' clause
-        item2 = new Item(videoId, title, description, kind, videoPublishedAt, liveBroadcastContent, scheduledStartTime,
-                thumbnailUrl, status, playlist, tag, null);
-        item2.setPlaylist(new Playlist()); // playlist is not in equals/hashCode, but tag is
-        assertEquals(item1, item2, "Changing a field not in equals/hashCode should not affect equality");
-        assertEquals(item1.hashCode(), item2.hashCode(),
-                "Changing a field in equals/hashCode should affect hashCode");
+        // Change the field included in 'of' clause (videoId)
+        item2.setVideoId("differentVideoId");
+        assertNotEquals(item1, item2, "Changing videoId should affect equality");
+        assertNotEquals(item1.hashCode(), item2.hashCode());
     }
 }

@@ -95,6 +95,7 @@ public class YoutubeHubServiceImpl implements YoutubeHubService {
     private final DownloadInfoRepository downloadInfoRepository;
     private final ConfigsService configsService;
     private final YoutubeApiUsageService youtubeApiUsageService;
+    private final YoutubeCheckpointService youtubeCheckpointService;
     @Value("${youtube.hub.downloader.url}")
     private String downloaderServiceUrl;
 
@@ -125,7 +126,8 @@ public class YoutubeHubServiceImpl implements YoutubeHubService {
     public YoutubeHubServiceImpl(ChannelRepository channelRepository, ItemRepository itemRepository,
             PlaylistRepository playlistRepository, TagRepository tagRepository,
             DownloadInfoRepository downloadInfoRepository, ConfigsService configsService,
-            YoutubeApiUsageService youtubeApiUsageService) {
+            YoutubeApiUsageService youtubeApiUsageService,
+            YoutubeCheckpointService youtubeCheckpointService) {
         this.channelRepository = channelRepository;
         this.itemRepository = itemRepository;
         this.playlistRepository = playlistRepository;
@@ -133,6 +135,7 @@ public class YoutubeHubServiceImpl implements YoutubeHubService {
         this.downloadInfoRepository = downloadInfoRepository;
         this.configsService = configsService;
         this.youtubeApiUsageService = youtubeApiUsageService;
+        this.youtubeCheckpointService = youtubeCheckpointService;
     }
 
     /**
@@ -161,7 +164,6 @@ public class YoutubeHubServiceImpl implements YoutubeHubService {
      * {@inheritDoc}
      */
     @Override
-    @Transactional
     public Map<String, Object> processJob(String key, String configName, Long delayInMilliseconds, OffsetDateTime publishedAfter,
             boolean forcePublishedAfter, List<String> channelIds) {
         HubConfig resolvedConfig;
@@ -228,7 +230,7 @@ public class YoutubeHubServiceImpl implements YoutubeHubService {
                                 channel.getTitle(),
                                 latestTitle);
                         channel.setTitle(latestTitle);
-                        // The change will be persisted automatically at the end of the transaction.
+                        channelRepository.save(channel);
                     }
                     Playlist uploadsPlaylist = playlistRepository.findByPlaylistId(uploadsPlaylistId)
                             .orElseGet(() -> {
@@ -270,18 +272,12 @@ public class YoutubeHubServiceImpl implements YoutubeHubService {
         logger.info("Finished YouTube processing job. Processed {} channels and found {} new items.",
                 processedChannelsCount, newItemsCount);
         Map<String, Object> result = new HashMap<>();
-        // Map<String, Object> countDetail = new HashMap<>();
-        // countDetail.put("standardVideoCount", standardVideoCount);
-        // countDetail.put("upcomingVideoCount", upcomingVideoCount);
-        // countDetail.put("liveVideoCount", liveVideoCount);
-        // countDetail.put("updatedItemsCount", updatedItemsCount);
         result.put("processedChannels", processedChannelsCount);
         result.put("newItems", newItemsCount);
         result.put("standardVideoCount", standardVideoCount);
         result.put("upcomingVideoCount", upcomingVideoCount);
         result.put("liveVideoCount", liveVideoCount);
         result.put("updatedItemsCount", updatedItemsCount);
-        // result.put("details", countDetail);
         result.put("failures", failures);
         return result;
     }
@@ -393,7 +389,11 @@ public class YoutubeHubServiceImpl implements YoutubeHubService {
                 effectivePublishedAfter == null ? "None" : effectivePublishedAfter.toString());
 
         OffsetDateTime newestVideoPublishedAt = null;
-        String nextPageToken = null;
+        String nextPageToken = playlist.getLastPageToken();
+        if (nextPageToken != null) {
+            logger.info("    -> Resuming from checkpoint token: {}", nextPageToken);
+        }
+
         boolean stopFetching = false;
         PlaylistProcessingResult result = new PlaylistProcessingResult();
 
@@ -429,9 +429,8 @@ public class YoutubeHubServiceImpl implements YoutubeHubService {
                 // Map of new video IDs on this page to their snippet from the playlistItems
                 // API call.
                 Map<String, JsonNode> newVideoSnippetsOnPage = new LinkedHashMap<>();
-                // Map of existing items on this page to their snippet for potential
-                // update.
-                Map<Item, JsonNode> existingItemsToUpdateOnPage = new LinkedHashMap<>();
+                // List of existing items on this page for potential update.
+                List<Item> existingItemsToUpdateOnPage = new ArrayList<>();
 
                 for (JsonNode itemNode : itemsNode) {
                     JsonNode snippet = itemNode.path("snippet");
@@ -458,7 +457,7 @@ public class YoutubeHubServiceImpl implements YoutubeHubService {
                     if (existingItemOpt.isPresent()) {
                         logger.debug("    -> Video with ID {} already exists in DB. Queuing for update check.",
                                 videoId);
-                        existingItemsToUpdateOnPage.put(existingItemOpt.get(), snippet);
+                        existingItemsToUpdateOnPage.add(existingItemOpt.get());
                     } else {
                         // This is a new video, add it to the map for batch processing.
                         logger.debug("    -> Video with ID {} is new. Queuing for creation.", videoId);
@@ -467,47 +466,69 @@ public class YoutubeHubServiceImpl implements YoutubeHubService {
                 }
 
                 // After checking all items on the page, fetch full details for the new ones.
-                List<Item> createdItems = fetchAndCreateItemsFromVideoIds(client, apiKey, newVideoSnippetsOnPage,
-                        delayInMilliseconds, quotaLimit, quotaThreshold);
+                List<Item> createdItems = Collections.emptyList();
                 try {
-                    for (Item newItem : createdItems) {
-                        playlist.addItem(newItem);
-                        result.newItemsCount++;
-                        switch (newItem.getLiveBroadcastContent()) {
-                            case NONE ->
-                                result.standardVideoCount++;
-                            case UPCOMING ->
-                                result.upcomingVideoCount++;
-                            case LIVE ->
-                                result.liveVideoCount++;
-                            // No default case needed if all enum values are handled.
-                            // If new values are added to LiveBroadcastContent, the compiler will warn you.
+                    createdItems = fetchAndCreateItemsFromVideoIds(client, apiKey, newVideoSnippetsOnPage,
+                            delayInMilliseconds, quotaLimit, quotaThreshold);
+
+                    try {
+                        for (Item newItem : createdItems) {
+                            newItem.setPlaylist(playlist);
+                            result.newItemsCount++;
+                            switch (newItem.getLiveBroadcastContent()) {
+                                case NONE ->
+                                    result.standardVideoCount++;
+                                case UPCOMING ->
+                                    result.upcomingVideoCount++;
+                                case LIVE ->
+                                    result.liveVideoCount++;
+                                // No default case needed if all enum values are handled.
+                                // If new values are added to LiveBroadcastContent, the compiler will warn you.
+                            }
                         }
+                    } catch (Exception e) {
+                        logger.error(
+                                "Failed to save a batch of items. This is often a character set issue (e.g., emoji in title). Please ensure DB uses utf8mb4.",
+                                e);
+                        // Optionally, you could try saving one-by-one here to isolate the bad item.
                     }
+
+                    // After checking all items on the page, fetch full details for existing ones
+                    // to check for updates.
+                    result.updatedItemsCount += updateExistingItems(client, apiKey, existingItemsToUpdateOnPage,
+                            delayInMilliseconds, quotaLimit, quotaThreshold);
+
+                    // [HUB-11] Save checkpoint: commit new items and the token for the NEXT page.
+                    // If stopFetching is true, we still save the progress of this page, but we might want to clear the token if we are done.
+                    // However, if we stop fetching, we are effectively done with the playlist.
+                    youtubeCheckpointService.savePageProgress(playlist, createdItems, stopFetching ? null : nextPageToken);
+                } catch (QuotaExceededException e) {
                     if (!createdItems.isEmpty()) {
-                        itemRepository.saveAll(Objects.requireNonNull(createdItems)); // Explicitly save here for debugging
+                        logger.warn("Quota exceeded during playlist processing. Saving {} new items before stopping.", createdItems.size());
+                        // Save items but keep the current checkpoint (don't advance) so we retry this page next time.
+                        youtubeCheckpointService.savePageProgress(playlist, createdItems, playlist.getLastPageToken());
                     }
-                } catch (Exception e) {
-                    logger.error(
-                            "Failed to save a batch of items. This is often a character set issue (e.g., emoji in title). Please ensure DB uses utf8mb4.",
-                            e);
-                    // Optionally, you could try saving one-by-one here to isolate the bad item.
+                    throw e;
                 }
 
-                // After checking all items on the page, fetch full details for existing ones
-                // to check for updates.
-                result.updatedItemsCount += updateExistingItems(client, apiKey, existingItemsToUpdateOnPage,
-                        delayInMilliseconds, quotaLimit, quotaThreshold);
             } while (!stopFetching && nextPageToken != null);
 
             // After fetching all new items, update the playlist's processedAt timestamp
             // to the publish time of the newest video we found in this run.
-            if (result.newItemsCount > 0) {
-                logger.info("    -> Found {} new video(s). Updating playlist's processedAt time to {}.",
-                        result.newItemsCount, newestVideoPublishedAt);
-                playlist.setProcessedAt(newestVideoPublishedAt);
-            } else {
-                logger.info("    -> No new videos found for this playlist.");
+            // Only update if we finished the whole playlist (nextPageToken is null or we stopped early because we reached old videos).
+            if (nextPageToken == null || stopFetching) {
+                if (result.newItemsCount > 0) {
+                    logger.info("    -> Found {} new video(s) for playlist {}. Updating playlist's processedAt time to {}.",
+                            result.newItemsCount, playlist.getPlaylistId(), newestVideoPublishedAt);
+                    playlist.setProcessedAt(newestVideoPublishedAt);
+                } else {
+                    logger.info("    -> No new videos found for playlist {}.", playlist.getPlaylistId());
+                }
+                // Ensure token is cleared when finished
+                if (playlist.getLastPageToken() != null) {
+                    playlist.setLastPageToken(null);
+                }
+                playlistRepository.save(playlist);
             }
         } catch (IOException | URISyntaxException | InterruptedException e) {
             if (e instanceof InterruptedException) {
@@ -541,9 +562,10 @@ public class YoutubeHubServiceImpl implements YoutubeHubService {
      * @param quotaLimit the daily quota limit
      * @param quotaThreshold the safety threshold for quota
      * @return a list of newly created (but not yet persisted) Item entities
-     * @throws IOException if an I/O error occurs
-     * @throws URISyntaxException if the URI is malformed
      * @throws InterruptedException if the thread is interrupted while sleeping.
+     * @throws QuotaExceededException if the daily quota limit is reached.
+     * @throws YoutubeApiAuthException if the API key is invalid.
+     * @throws YoutubeApiRequestException if the API call fails.
      */
     private List<Item> fetchAndCreateItemsFromVideoIds(HttpClient client, String apiKey,
             Map<String, JsonNode> newVideoSnippets, long delayInMilliseconds, long quotaLimit, long quotaThreshold) throws InterruptedException {
@@ -631,16 +653,19 @@ public class YoutubeHubServiceImpl implements YoutubeHubService {
      * @param quotaLimit the daily quota limit
      * @param quotaThreshold the safety threshold for quota
      * @throws InterruptedException if the thread is interrupted while sleeping.
+     * @throws QuotaExceededException if the daily quota limit is reached.
+     * @throws YoutubeApiAuthException if the API key is invalid.
+     * @throws YoutubeApiRequestException if the API call fails.
      * @return the number of items that were updated
      */
-    private int updateExistingItems(HttpClient client, String apiKey, Map<Item, JsonNode> existingItemsToUpdate,
+    private int updateExistingItems(HttpClient client, String apiKey, List<Item> existingItemsToUpdate,
             long delayInMilliseconds, long quotaLimit, long quotaThreshold) throws InterruptedException {
         if (existingItemsToUpdate.isEmpty()) {
             return 0;
         }
 
         int updatedCount = 0;
-        List<String> videoIdsList = existingItemsToUpdate.keySet().stream().map(Item::getVideoId).toList();
+        List<String> videoIdsList = existingItemsToUpdate.stream().map(Item::getVideoId).toList();
         String videoIds = String.join(",", videoIdsList);
 
         Map<String, String> params = new HashMap<>();
@@ -669,7 +694,7 @@ public class YoutubeHubServiceImpl implements YoutubeHubService {
 
             for (JsonNode videoItemNode : videoItemsNode) {
                 String videoId = videoItemNode.path("id").asText();
-                Optional<Item> itemOptional = existingItemsToUpdate.keySet().stream()
+                Optional<Item> itemOptional = existingItemsToUpdate.stream()
                         .filter(item -> item.getVideoId().equals(videoId)).findFirst();
 
                 if (itemOptional.isEmpty()) {

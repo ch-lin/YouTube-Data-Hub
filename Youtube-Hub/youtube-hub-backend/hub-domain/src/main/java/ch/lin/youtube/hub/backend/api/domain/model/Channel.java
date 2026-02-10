@@ -54,7 +54,7 @@ import lombok.Setter;
 @Setter
 @NoArgsConstructor
 @AllArgsConstructor
-@EqualsAndHashCode(of = {"channelId", "title"}, callSuper = false)
+@EqualsAndHashCode(of = {"channelId"}, callSuper = false)
 public class Channel extends BaseEntity {
 
     /**
