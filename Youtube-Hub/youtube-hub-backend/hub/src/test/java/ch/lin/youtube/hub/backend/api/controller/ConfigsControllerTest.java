@@ -100,6 +100,8 @@ class ConfigsControllerTest {
         createRequest.setFixedRate(1000L);
         createRequest.setCronExpression("cron");
         createRequest.setCronTimeZone("UTC");
+        createRequest.setQuota(50000L);
+        createRequest.setQuotaSafetyThreshold(1000L);
 
         HubConfig created = new HubConfig();
         created.setName("new-config");
@@ -124,6 +126,8 @@ class ConfigsControllerTest {
         assertThat(captor.getValue().getFixedRate()).isEqualTo(1000L);
         assertThat(captor.getValue().getCronExpression()).isEqualTo("cron");
         assertThat(captor.getValue().getCronTimeZone()).isEqualTo("UTC");
+        assertThat(captor.getValue().getQuota()).isEqualTo(50000L);
+        assertThat(captor.getValue().getQuotaSafetyThreshold()).isEqualTo(1000L);
     }
 
     @Test
@@ -158,6 +162,8 @@ class ConfigsControllerTest {
         updateRequest.setFixedRate(2000L);
         updateRequest.setCronExpression("cron2");
         updateRequest.setCronTimeZone("Asia/Taipei");
+        updateRequest.setQuota(30000L);
+        updateRequest.setQuotaSafetyThreshold(500L);
 
         HubConfig saved = new HubConfig();
         saved.setName("test");
@@ -183,6 +189,8 @@ class ConfigsControllerTest {
         assertThat(captor.getValue().getFixedRate()).isPresent().contains(2000L);
         assertThat(captor.getValue().getCronExpression()).isPresent().contains("cron2");
         assertThat(captor.getValue().getCronTimeZone()).isPresent().contains("Asia/Taipei");
+        assertThat(captor.getValue().getQuota()).isPresent().contains(30000L);
+        assertThat(captor.getValue().getQuotaSafetyThreshold()).isPresent().contains(500L);
     }
 
     @Test

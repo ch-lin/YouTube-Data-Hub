@@ -21,50 +21,28 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
  * THE SOFTWARE.
  *===========================================================================*/
-package ch.lin.youtube.hub.backend.api.dto;
-
-import java.util.Set;
+package ch.lin.youtube.hub.backend.api.common.exception;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.http.HttpStatus;
+import org.springframework.web.bind.annotation.ResponseStatus;
 
-import jakarta.validation.ConstraintViolation;
-import jakarta.validation.Validation;
-import jakarta.validation.Validator;
-import jakarta.validation.ValidatorFactory;
+class QuotaExceededExceptionTest {
 
-class CreateConfigRequestTest {
+    @Test
+    void testConstructorWithMessage() {
+        String message = "Daily quota limit reached.";
+        QuotaExceededException exception = new QuotaExceededException(message);
 
-    private Validator validator;
-
-    @BeforeEach
-    @SuppressWarnings("unused")
-    void setUp() {
-        ValidatorFactory factory = Validation.buildDefaultValidatorFactory();
-        validator = factory.getValidator();
+        assertThat(exception.getMessage()).isEqualTo(message);
     }
 
     @Test
-    void createConfigRequest_ShouldSetAndGetValues() {
-        CreateConfigRequest request = new CreateConfigRequest();
-        request.setName("new-config");
-        request.setEnabled(true);
-        request.setYoutubeApiKey("key");
-        request.setQuota(10000L);
+    void testResponseStatus() {
+        ResponseStatus responseStatus = QuotaExceededException.class.getAnnotation(ResponseStatus.class);
 
-        assertThat(request.getName()).isEqualTo("new-config");
-        assertThat(request.getEnabled()).isTrue();
-        assertThat(request.getYoutubeApiKey()).isEqualTo("key");
-        assertThat(request.getQuota()).isEqualTo(10000L);
-    }
-
-    @Test
-    void createConfigRequest_ShouldFailValidation_WhenNameIsBlank() {
-        CreateConfigRequest request = new CreateConfigRequest();
-        request.setName("");
-
-        Set<ConstraintViolation<CreateConfigRequest>> violations = validator.validate(request);
-        assertThat(violations).hasSize(1);
+        assertThat(responseStatus).isNotNull();
+        assertThat(responseStatus.value()).isEqualTo(HttpStatus.TOO_MANY_REQUESTS);
     }
 }

@@ -76,4 +76,16 @@ public class YoutubeApiUsageServiceImpl implements YoutubeApiUsageService {
         youtubeApiUsageRepository.save(usage);
     }
 
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    @Transactional(readOnly = true)
+    public boolean hasSufficientQuota(long dailyQuotaLimit, long safetyThreshold) {
+        LocalDate today = YoutubeApiUsage.getCurrentQuotaDate();
+        long currentUsage = youtubeApiUsageRepository.findByUsageDate(today)
+                .map(YoutubeApiUsage::getQuotaUsed)
+                .orElse(0L);
+        return (currentUsage + safetyThreshold) < dailyQuotaLimit;
+    }
 }

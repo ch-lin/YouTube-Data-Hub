@@ -100,4 +100,14 @@ public class HubDefaultProperties {
      * The time zone for the cron expression.
      */
     private String cronTimeZone = "Asia/Taipei";
+
+    /**
+     * The daily quota limit for the YouTube Data API. Defaults to 10,000.
+     */
+    private Long quota = 10000L;
+
+    /**
+     * The safety threshold for the quota. Defaults to 500.
+     */
+    private Long quotaSafetyThreshold = 500L;
 }

@@ -60,6 +60,7 @@ import ch.lin.youtube.hub.backend.api.app.repository.ItemRepository;
 import ch.lin.youtube.hub.backend.api.app.repository.PlaylistRepository;
 import ch.lin.youtube.hub.backend.api.app.repository.TagRepository;
 import ch.lin.youtube.hub.backend.api.app.service.model.DownloadItem;
+import ch.lin.youtube.hub.backend.api.common.exception.QuotaExceededException;
 import ch.lin.youtube.hub.backend.api.common.exception.YoutubeApiAuthException;
 import ch.lin.youtube.hub.backend.api.common.exception.YoutubeApiRequestException;
 import ch.lin.youtube.hub.backend.api.domain.model.Channel;
@@ -163,19 +164,19 @@ public class YoutubeHubServiceImpl implements YoutubeHubService {
     @Transactional
     public Map<String, Object> processJob(String key, String configName, Long delayInMilliseconds, OffsetDateTime publishedAfter,
             boolean forcePublishedAfter, List<String> channelIds) {
+        HubConfig resolvedConfig;
+        if (configName != null && !configName.isBlank()) {
+            resolvedConfig = configsService.getResolvedConfig(configName);
+            if (!configName.equalsIgnoreCase(resolvedConfig.getName())) {
+                throw new InvalidRequestException("Configuration with name '" + configName + "' not found.");
+            }
+        } else {
+            resolvedConfig = configsService.getResolvedConfig(null);
+        }
+
         String apiKey = key;
         if (apiKey == null || apiKey.isBlank()) {
-            logger.info("No API key provided in request. Attempting to use a configured key.");
-            HubConfig resolvedConfig;
-            if (configName != null && !configName.isBlank()) {
-                resolvedConfig = configsService.getResolvedConfig(configName);
-                if (!configName.equalsIgnoreCase(resolvedConfig.getName())) {
-                    throw new InvalidRequestException("Configuration with name '" + configName + "' not found.");
-                }
-            } else {
-                resolvedConfig = configsService.getResolvedConfig(null);
-            }
-            logger.info("Using configuration: {}", resolvedConfig.getName());
+            logger.info("No API key provided in request. Using configured key from '{}'.", resolvedConfig.getName());
             apiKey = resolvedConfig.getYoutubeApiKey();
         }
 
@@ -187,6 +188,9 @@ public class YoutubeHubServiceImpl implements YoutubeHubService {
             logger.warn("Invalid delay value provided. Defaulting to 100 milliseconds.");
             delayInMilliseconds = 100L;
         }
+
+        long quotaLimit = resolvedConfig.getQuota();
+        long quotaThreshold = resolvedConfig.getQuotaSafetyThreshold();
 
         List<Channel> channels;
         if (channelIds != null && !channelIds.isEmpty()) {
@@ -214,7 +218,7 @@ public class YoutubeHubServiceImpl implements YoutubeHubService {
                     // Fetch the latest channel details from the YouTube Data API.
                     Map<String, String> channelDetails = fetchChannelDetailsFromApi(client, channel.getChannelId(),
                             apiKey,
-                            delayInMilliseconds);
+                            delayInMilliseconds, quotaLimit, quotaThreshold);
                     String uploadsPlaylistId = channelDetails.get("uploadsPlaylistId");
                     String latestTitle = channelDetails.get("title");
                     Objects.requireNonNull(latestTitle);
@@ -240,13 +244,16 @@ public class YoutubeHubServiceImpl implements YoutubeHubService {
                     logger.info("  -> Processing playlist: {} ({})", uploadsPlaylist.getTitle(),
                             uploadsPlaylist.getPlaylistId());
                     PlaylistProcessingResult channelResult = fetchAndProcessPlaylistItems(client, uploadsPlaylist, apiKey,
-                            publishedAfter, forcePublishedAfter, delayInMilliseconds);
+                            publishedAfter, forcePublishedAfter, delayInMilliseconds, quotaLimit, quotaThreshold);
                     newItemsCount += channelResult.newItemsCount;
                     standardVideoCount += channelResult.standardVideoCount;
                     upcomingVideoCount += channelResult.upcomingVideoCount;
                     liveVideoCount += channelResult.liveVideoCount;
                     updatedItemsCount += channelResult.updatedItemsCount;
                     processedChannelsCount++;
+                } catch (QuotaExceededException e) {
+                    logger.warn("Job stopped early: Global quota limit reached while processing {}.", channel.getTitle());
+                    break;
                 } catch (YoutubeApiRequestException e) {
                     logger.error("Failed to process channel {}: {}", channel.getChannelId(), e.getMessage(), e);
                     Map<String, String> failure = new HashMap<>();
@@ -288,14 +295,19 @@ public class YoutubeHubServiceImpl implements YoutubeHubService {
      * @param apiKey the YouTube Data API key
      * @param delayInMilliseconds the delay in milliseconds before making the
      * API request
+     * @param quotaLimit the daily quota limit
+     * @param quotaThreshold the safety threshold for quota
      * @return a map containing "uploadsPlaylistId" and "title"
      * @throws YoutubeApiAuthException if the API key is invalid.
      * @throws YoutubeApiRequestException if the API call fails or the response
      * cannot be parsed.
      */
     private Map<String, String> fetchChannelDetailsFromApi(HttpClient client, String channelId, String apiKey,
-            long delayInMilliseconds) {
+            long delayInMilliseconds, long quotaLimit, long quotaThreshold) {
         try {
+            if (!youtubeApiUsageService.hasSufficientQuota(quotaLimit, quotaThreshold)) {
+                throw new QuotaExceededException("Daily quota limit reached.");
+            }
             Map<String, String> params = new HashMap<>();
             params.put("part", "contentDetails,snippet");
             params.put("id", channelId);
@@ -352,13 +364,17 @@ public class YoutubeHubServiceImpl implements YoutubeHubService {
      * {@code requestPublishedAfter}
      * @param delayInMilliseconds the delay in milliseconds before each API
      * request
+     * @param quotaLimit the daily quota limit
+     * @param quotaThreshold the safety threshold for quota
      * @return a {@link PlaylistProcessingResult} containing the counts of new
      * and updated items
      */
     private PlaylistProcessingResult fetchAndProcessPlaylistItems(HttpClient client, Playlist playlist, String apiKey,
             OffsetDateTime requestPublishedAfter,
             boolean forcePublishedAfter,
-            long delayInMilliseconds) {
+            long delayInMilliseconds,
+            long quotaLimit,
+            long quotaThreshold) {
         OffsetDateTime lastProcessedAt = playlist.getProcessedAt();
 
         // Determine the effective cutoff time for fetching videos.
@@ -383,6 +399,10 @@ public class YoutubeHubServiceImpl implements YoutubeHubService {
 
         try {
             do {
+                if (!youtubeApiUsageService.hasSufficientQuota(quotaLimit, quotaThreshold)) {
+                    throw new QuotaExceededException("Daily quota limit reached.");
+                }
+
                 Map<String, String> params = new HashMap<>();
                 params.put("part", "snippet");
                 params.put("playlistId", playlist.getPlaylistId());
@@ -448,7 +468,7 @@ public class YoutubeHubServiceImpl implements YoutubeHubService {
 
                 // After checking all items on the page, fetch full details for the new ones.
                 List<Item> createdItems = fetchAndCreateItemsFromVideoIds(client, apiKey, newVideoSnippetsOnPage,
-                        delayInMilliseconds);
+                        delayInMilliseconds, quotaLimit, quotaThreshold);
                 try {
                     for (Item newItem : createdItems) {
                         playlist.addItem(newItem);
@@ -477,7 +497,7 @@ public class YoutubeHubServiceImpl implements YoutubeHubService {
                 // After checking all items on the page, fetch full details for existing ones
                 // to check for updates.
                 result.updatedItemsCount += updateExistingItems(client, apiKey, existingItemsToUpdateOnPage,
-                        delayInMilliseconds);
+                        delayInMilliseconds, quotaLimit, quotaThreshold);
             } while (!stopFetching && nextPageToken != null);
 
             // After fetching all new items, update the playlist's processedAt timestamp
@@ -518,13 +538,15 @@ public class YoutubeHubServiceImpl implements YoutubeHubService {
      * `publishedAt` timestamp.
      * @param delayInMilliseconds the delay in milliseconds before making the
      * API request
+     * @param quotaLimit the daily quota limit
+     * @param quotaThreshold the safety threshold for quota
      * @return a list of newly created (but not yet persisted) Item entities
      * @throws IOException if an I/O error occurs
      * @throws URISyntaxException if the URI is malformed
      * @throws InterruptedException if the thread is interrupted while sleeping.
      */
     private List<Item> fetchAndCreateItemsFromVideoIds(HttpClient client, String apiKey,
-            Map<String, JsonNode> newVideoSnippets, long delayInMilliseconds) throws InterruptedException {
+            Map<String, JsonNode> newVideoSnippets, long delayInMilliseconds, long quotaLimit, long quotaThreshold) throws InterruptedException {
         if (newVideoSnippets.isEmpty()) {
             return Collections.emptyList();
         }
@@ -539,6 +561,9 @@ public class YoutubeHubServiceImpl implements YoutubeHubService {
         params.put("maxResults", "50");
 
         try {
+            if (!youtubeApiUsageService.hasSufficientQuota(quotaLimit, quotaThreshold)) {
+                throw new QuotaExceededException("Daily quota limit reached.");
+            }
             delayRequest(delayInMilliseconds);
             youtubeApiUsageService.recordUsage(1L);
             logger.debug("    -> Requested video IDs {}.", videoIds);
@@ -603,11 +628,13 @@ public class YoutubeHubServiceImpl implements YoutubeHubService {
      * corresponding snippet JsonNode from the playlistItems call
      * @param delayInMilliseconds the delay in milliseconds before making the
      * API request
+     * @param quotaLimit the daily quota limit
+     * @param quotaThreshold the safety threshold for quota
      * @throws InterruptedException if the thread is interrupted while sleeping.
      * @return the number of items that were updated
      */
     private int updateExistingItems(HttpClient client, String apiKey, Map<Item, JsonNode> existingItemsToUpdate,
-            long delayInMilliseconds) throws InterruptedException {
+            long delayInMilliseconds, long quotaLimit, long quotaThreshold) throws InterruptedException {
         if (existingItemsToUpdate.isEmpty()) {
             return 0;
         }
@@ -623,6 +650,9 @@ public class YoutubeHubServiceImpl implements YoutubeHubService {
         params.put("maxResults", "50");
 
         try {
+            if (!youtubeApiUsageService.hasSufficientQuota(quotaLimit, quotaThreshold)) {
+                throw new QuotaExceededException("Daily quota limit reached.");
+            }
             delayRequest(delayInMilliseconds);
             // Quota cost: 1 unit for videos.list operation
             youtubeApiUsageService.recordUsage(1L);

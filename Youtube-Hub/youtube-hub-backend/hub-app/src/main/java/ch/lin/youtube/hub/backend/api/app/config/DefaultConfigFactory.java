@@ -57,6 +57,8 @@ public class DefaultConfigFactory {
                 properties.getSchedulerType(),
                 properties.getFixedRate(),
                 properties.getCronExpression(),
-                properties.getCronTimeZone());
+                properties.getCronTimeZone(),
+                properties.getQuota(),
+                properties.getQuotaSafetyThreshold());
     }
 }

@@ -87,4 +87,14 @@ public class CreateConfigCommand {
      * The time zone for the cron expression.
      */
     String cronTimeZone;
+
+    /**
+     * The daily quota limit for the YouTube Data API.
+     */
+    Long quota;
+
+    /**
+     * The safety threshold for the quota.
+     */
+    Long quotaSafetyThreshold;
 }

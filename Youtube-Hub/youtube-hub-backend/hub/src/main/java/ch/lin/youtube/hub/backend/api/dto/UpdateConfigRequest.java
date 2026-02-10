@@ -99,4 +99,14 @@ public class UpdateConfigRequest {
      * Updates the time zone for the cron expression.
      */
     private String cronTimeZone;
+
+    /**
+     * Updates the daily quota limit for the YouTube Data API.
+     */
+    private Long quota;
+
+    /**
+     * Updates the safety threshold for the quota.
+     */
+    private Long quotaSafetyThreshold;
 }

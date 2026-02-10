@@ -146,6 +146,9 @@ public class ConfigsServiceImpl implements ConfigsService {
         newConfig.setCronExpression(command.getCronExpression());
         validateCronTimeZone(command.getCronTimeZone());
         newConfig.setCronTimeZone(command.getCronTimeZone());
+        newConfig.setQuota(command.getQuota());
+        validateQuotaThreshold(command.getQuotaSafetyThreshold());
+        newConfig.setQuotaSafetyThreshold(command.getQuotaSafetyThreshold());
 
         return hubConfigRepository.save(newConfig);
     }
@@ -248,6 +251,9 @@ public class ConfigsServiceImpl implements ConfigsService {
         command.getCronExpression().ifPresent(config::setCronExpression);
         command.getCronTimeZone().ifPresent(this::validateCronTimeZone);
         command.getCronTimeZone().ifPresent(config::setCronTimeZone);
+        command.getQuota().ifPresent(config::setQuota);
+        command.getQuotaSafetyThreshold().ifPresent(this::validateQuotaThreshold);
+        command.getQuotaSafetyThreshold().ifPresent(config::setQuotaSafetyThreshold);
 
         HubConfig savedConfig = hubConfigRepository.save(config);
 
@@ -323,6 +329,12 @@ public class ConfigsServiceImpl implements ConfigsService {
             if (!StringUtils.hasText(dbConfig.getCronTimeZone())) {
                 dbConfig.setCronTimeZone(defaultConfig.getCronTimeZone());
             }
+            if (dbConfig.getQuota() == null) {
+                dbConfig.setQuota(defaultConfig.getQuota());
+            }
+            if (dbConfig.getQuotaSafetyThreshold() == null) {
+                dbConfig.setQuotaSafetyThreshold(defaultConfig.getQuotaSafetyThreshold());
+            }
             return dbConfig;
         }).orElseGet(this::findOrCreateDefaultConfig);
     }
@@ -388,6 +400,17 @@ public class ConfigsServiceImpl implements ConfigsService {
                     return 3;
                 }).thenComparing(TimeZoneOption::id))
                 .collect(Collectors.toList());
+    }
+
+    /**
+     * Validates that the quota safety threshold is not negative.
+     *
+     * @param threshold The threshold to validate.
+     */
+    private void validateQuotaThreshold(Long threshold) {
+        if (threshold != null && threshold < 0) {
+            throw new InvalidRequestException("Quota safety threshold cannot be negative.");
+        }
     }
 
     /**

@@ -35,10 +35,12 @@ class UpdateConfigRequestTest {
         request.setYoutubeApiKey("api-key");
         request.setClientId("client-id");
         request.setClientSecret("client-secret");
+        request.setQuota(20000L);
 
         assertThat(request.getEnabled()).isTrue();
         assertThat(request.getYoutubeApiKey()).isEqualTo("api-key");
         assertThat(request.getClientId()).isEqualTo("client-id");
         assertThat(request.getClientSecret()).isEqualTo("client-secret");
+        assertThat(request.getQuota()).isEqualTo(20000L);
     }
 }
