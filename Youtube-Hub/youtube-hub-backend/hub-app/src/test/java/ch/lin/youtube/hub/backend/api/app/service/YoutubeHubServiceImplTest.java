@@ -41,6 +41,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyList;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyMap;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
@@ -112,6 +113,9 @@ class YoutubeHubServiceImplTest {
         service = new YoutubeHubServiceImpl(channelRepository, itemRepository, playlistRepository, tagRepository,
                 downloadInfoRepository, configsService, youtubeApiUsageService);
         ReflectionTestUtils.setField(service, "downloaderServiceUrl", "http://localhost:8081");
+
+        // Default to having sufficient quota for all tests to prevent QuotaExceededException
+        lenient().when(youtubeApiUsageService.hasSufficientQuota(anyLong(), anyLong())).thenReturn(true);
     }
 
     @Test
@@ -218,6 +222,171 @@ class YoutubeHubServiceImplTest {
             assertThat(failures.get(0).get("channelId")).isEqualTo("ch1");
             assertThat(mocked.constructed()).hasSize(1);
             verify(youtubeApiUsageService).recordUsage(1L);
+        }
+    }
+
+    @Test
+    void processJob_ShouldStopEarly_WhenQuotaExceeded() throws Exception {
+        HubConfig config = new HubConfig();
+        config.setYoutubeApiKey("test-key");
+        when(configsService.getResolvedConfig(null)).thenReturn(config);
+
+        Channel channel = new Channel();
+        channel.setChannelId("ch1");
+        channel.setTitle("Channel 1");
+        when(channelRepository.findAll()).thenReturn(List.of(channel));
+
+        // Simulate quota exceeded
+        when(youtubeApiUsageService.hasSufficientQuota(anyLong(), anyLong())).thenReturn(false);
+
+        try (MockedConstruction<HttpClient> mocked = mockConstruction(HttpClient.class)) {
+            Map<String, Object> result = service.processJob(null, null, null, null, false, null);
+
+            // Should stop immediately, so 0 processed
+            assertThat(result.get("processedChannels")).isEqualTo(0);
+            // Verify that we checked quota
+            verify(youtubeApiUsageService).hasSufficientQuota(anyLong(), anyLong());
+            // Verify no API calls were made
+            assertThat(mocked.constructed()).hasSize(1);
+            verify(mocked.constructed().get(0), never()).get(anyString(), anyMap(), any());
+        }
+    }
+
+    @Test
+    @SuppressWarnings("null")
+    void processJob_ShouldStop_WhenQuotaExceeded_BeforePlaylistItemsFetch() throws Exception {
+        HubConfig config = new HubConfig();
+        config.setYoutubeApiKey("test-key");
+        when(configsService.getResolvedConfig(null)).thenReturn(config);
+
+        Channel channel = new Channel();
+        channel.setChannelId("ch1");
+        channel.setTitle("Channel 1");
+        when(channelRepository.findAll()).thenReturn(List.of(channel));
+
+        when(playlistRepository.findByPlaylistId("uploads1")).thenReturn(Optional.empty());
+        when(playlistRepository.save(any())).thenAnswer(i -> i.getArgument(0));
+
+        String channelResponse = "{\"items\": [{\"contentDetails\": {\"relatedPlaylists\": {\"uploads\": \"uploads1\"}}, \"snippet\": {\"title\": \"Channel 1\"}}]}";
+
+        // 1. fetchChannelDetailsFromApi -> true
+        // 2. fetchAndProcessPlaylistItems -> false
+        when(youtubeApiUsageService.hasSufficientQuota(anyLong(), anyLong()))
+                .thenReturn(true)
+                .thenReturn(false);
+
+        try (MockedConstruction<HttpClient> mocked = mockConstruction(HttpClient.class,
+                (mock, context) -> {
+                    when(mock.get(eq("/youtube/v3/channels"), any(), any()))
+                            .thenReturn(new HttpClient.Response(200, channelResponse));
+                })) {
+
+            Map<String, Object> result = service.processJob(null, null, null, null, false, null);
+
+            assertThat(result.get("processedChannels")).isEqualTo(0);
+            verify(youtubeApiUsageService, times(2)).hasSufficientQuota(anyLong(), anyLong());
+
+            HttpClient client = mocked.constructed().get(0);
+            verify(client).get(eq("/youtube/v3/channels"), any(), any());
+            verify(client, never()).get(eq("/youtube/v3/playlistItems"), any(), any());
+        }
+    }
+
+    @Test
+    @SuppressWarnings("null")
+    void processJob_ShouldStop_WhenQuotaExceeded_BeforeVideoDetailsFetch() throws Exception {
+        HubConfig config = new HubConfig();
+        config.setYoutubeApiKey("test-key");
+        when(configsService.getResolvedConfig(null)).thenReturn(config);
+
+        Channel channel = new Channel();
+        channel.setChannelId("ch1");
+        channel.setTitle("Channel 1");
+        when(channelRepository.findAll()).thenReturn(List.of(channel));
+
+        when(playlistRepository.findByPlaylistId("uploads1")).thenReturn(Optional.empty());
+        when(playlistRepository.save(any())).thenAnswer(i -> i.getArgument(0));
+        when(itemRepository.findByVideoId("v1")).thenReturn(Optional.empty()); // New item
+
+        String channelResponse = "{\"items\": [{\"contentDetails\": {\"relatedPlaylists\": {\"uploads\": \"uploads1\"}}, \"snippet\": {\"title\": \"Channel 1\"}}]}";
+        String playlistItemsResponse = "{\"items\": [{\"snippet\": {\"resourceId\": {\"videoId\": \"v1\"}, \"publishedAt\": \"2023-01-01T10:00:00Z\"}}]}";
+
+        // 1. fetchChannelDetailsFromApi -> true
+        // 2. fetchAndProcessPlaylistItems (playlistItems) -> true
+        // 3. fetchAndCreateItemsFromVideoIds (videos) -> false
+        when(youtubeApiUsageService.hasSufficientQuota(anyLong(), anyLong()))
+                .thenReturn(true)
+                .thenReturn(true)
+                .thenReturn(false);
+
+        try (MockedConstruction<HttpClient> mocked = mockConstruction(HttpClient.class,
+                (mock, context) -> {
+                    when(mock.get(eq("/youtube/v3/channels"), any(), any()))
+                            .thenReturn(new HttpClient.Response(200, channelResponse));
+                    when(mock.get(eq("/youtube/v3/playlistItems"), any(), any()))
+                            .thenReturn(new HttpClient.Response(200, playlistItemsResponse));
+                })) {
+
+            Map<String, Object> result = service.processJob(null, null, null, null, false, null);
+
+            assertThat(result.get("processedChannels")).isEqualTo(0);
+            verify(youtubeApiUsageService, times(3)).hasSufficientQuota(anyLong(), anyLong());
+
+            HttpClient client = mocked.constructed().get(0);
+            verify(client).get(eq("/youtube/v3/channels"), any(), any());
+            verify(client).get(eq("/youtube/v3/playlistItems"), any(), any());
+            verify(client, never()).get(eq("/youtube/v3/videos"), any(), any());
+        }
+    }
+
+    @Test
+    @SuppressWarnings("null")
+    void processJob_ShouldStop_WhenQuotaExceeded_BeforeVideoUpdateCheck() throws Exception {
+        HubConfig config = new HubConfig();
+        config.setYoutubeApiKey("test-key");
+        when(configsService.getResolvedConfig(null)).thenReturn(config);
+
+        Channel channel = new Channel();
+        channel.setChannelId("ch1");
+        channel.setTitle("Channel 1");
+        when(channelRepository.findAll()).thenReturn(List.of(channel));
+
+        when(playlistRepository.findByPlaylistId("uploads1")).thenReturn(Optional.empty());
+        when(playlistRepository.save(any())).thenAnswer(i -> i.getArgument(0));
+
+        Item existingItem = new Item();
+        existingItem.setVideoId("v1");
+        when(itemRepository.findByVideoId("v1")).thenReturn(Optional.of(existingItem)); // Existing item
+
+        String channelResponse = "{\"items\": [{\"contentDetails\": {\"relatedPlaylists\": {\"uploads\": \"uploads1\"}}, \"snippet\": {\"title\": \"Channel 1\"}}]}";
+        String playlistItemsResponse = "{\"items\": [{\"snippet\": {\"resourceId\": {\"videoId\": \"v1\"}, \"publishedAt\": \"2023-01-01T10:00:00Z\"}}]}";
+
+        // 1. fetchChannelDetailsFromApi -> true
+        // 2. fetchAndProcessPlaylistItems (playlistItems) -> true
+        // 3. updateExistingItems (videos) -> false
+        // Note: fetchAndCreateItemsFromVideoIds is skipped because no new items
+        when(youtubeApiUsageService.hasSufficientQuota(anyLong(), anyLong()))
+                .thenReturn(true)
+                .thenReturn(true)
+                .thenReturn(false);
+
+        try (MockedConstruction<HttpClient> mocked = mockConstruction(HttpClient.class,
+                (mock, context) -> {
+                    when(mock.get(eq("/youtube/v3/channels"), any(), any()))
+                            .thenReturn(new HttpClient.Response(200, channelResponse));
+                    when(mock.get(eq("/youtube/v3/playlistItems"), any(), any()))
+                            .thenReturn(new HttpClient.Response(200, playlistItemsResponse));
+                })) {
+
+            Map<String, Object> result = service.processJob(null, null, null, null, false, null);
+
+            assertThat(result.get("processedChannels")).isEqualTo(0);
+            verify(youtubeApiUsageService, times(3)).hasSufficientQuota(anyLong(), anyLong());
+
+            HttpClient client = mocked.constructed().get(0);
+            verify(client).get(eq("/youtube/v3/channels"), any(), any());
+            verify(client).get(eq("/youtube/v3/playlistItems"), any(), any());
+            verify(client, never()).get(eq("/youtube/v3/videos"), any(), any());
         }
     }
 
@@ -331,7 +500,12 @@ class YoutubeHubServiceImplTest {
     }
 
     @Test
-    void processJob_ShouldUseProvidedApiKey_AndSkipConfigResolution() {
+    void processJob_ShouldUseProvidedApiKey_AndResolveConfigForQuota() {
+        HubConfig config = new HubConfig();
+        config.setQuota(10000L);
+        config.setQuotaSafetyThreshold(500L);
+        when(configsService.getResolvedConfig(null)).thenReturn(config);
+
         try (MockedConstruction<HttpClient> mocked = mockConstruction(HttpClient.class,
                 (mock, context) -> {
                     when(mock.get(anyString(), any(), any())).thenReturn(new HttpClient.Response(200, "{\"items\": []}"));
@@ -340,7 +514,7 @@ class YoutubeHubServiceImplTest {
             assertThat(mocked.constructed()).hasSize(1);
         }
 
-        verify(configsService, never()).getResolvedConfig(any());
+        verify(configsService).getResolvedConfig(null);
     }
 
     @Test

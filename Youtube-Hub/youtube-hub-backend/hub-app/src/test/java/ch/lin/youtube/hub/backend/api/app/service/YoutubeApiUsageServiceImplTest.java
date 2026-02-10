@@ -129,4 +129,35 @@ class YoutubeApiUsageServiceImplTest {
         assertThat(saved.getQuotaUsed()).isEqualTo(10);
         assertThat(saved.getUsageDate()).isNotNull();
     }
+
+    @Test
+    void hasSufficientQuota_ShouldReturnTrue_WhenUsageIsLow() {
+        YoutubeApiUsage usage = new YoutubeApiUsage();
+        usage.setQuotaUsed(100L);
+        when(youtubeApiUsageRepository.findByUsageDate(any(LocalDate.class))).thenReturn(Optional.of(usage));
+
+        boolean result = service.hasSufficientQuota(1000L, 100L);
+
+        assertThat(result).isTrue();
+    }
+
+    @Test
+    void hasSufficientQuota_ShouldReturnFalse_WhenUsageIsHigh() {
+        YoutubeApiUsage usage = new YoutubeApiUsage();
+        usage.setQuotaUsed(900L);
+        when(youtubeApiUsageRepository.findByUsageDate(any(LocalDate.class))).thenReturn(Optional.of(usage));
+
+        boolean result = service.hasSufficientQuota(1000L, 100L); // 900 + 100 = 1000, not < 1000
+
+        assertThat(result).isFalse();
+    }
+
+    @Test
+    void hasSufficientQuota_ShouldReturnTrue_WhenNoUsageRecord() {
+        when(youtubeApiUsageRepository.findByUsageDate(any(LocalDate.class))).thenReturn(Optional.empty());
+
+        boolean result = service.hasSufficientQuota(1000L, 100L);
+
+        assertThat(result).isTrue();
+    }
 }

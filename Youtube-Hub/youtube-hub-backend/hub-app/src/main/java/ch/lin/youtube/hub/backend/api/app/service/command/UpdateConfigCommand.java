@@ -93,4 +93,14 @@ public class UpdateConfigCommand {
      * An optional new cron time zone.
      */
     Optional<String> cronTimeZone;
+
+    /**
+     * An optional new daily quota limit.
+     */
+    Optional<Long> quota;
+
+    /**
+     * An optional new safety threshold for the quota.
+     */
+    Optional<Long> quotaSafetyThreshold;
 }

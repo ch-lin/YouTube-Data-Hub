@@ -50,7 +50,7 @@ import lombok.Setter;
 @AllArgsConstructor
 @EqualsAndHashCode(of = {"name", "enabled", "youtubeApiKey", "clientId", "clientSecret",
     "autoStartFetchScheduler", "schedulerType", "fixedRate", "cronExpression",
-    "cronTimeZone"}, callSuper = false)
+    "cronTimeZone", "quota", "quotaSafetyThreshold"}, callSuper = false)
 public class HubConfig {
 
     /**
@@ -107,6 +107,16 @@ public class HubConfig {
      * The name of the cron time zone column in the database.
      */
     public static final String CRON_TIME_ZONE_COLUMN = "cron_time_zone";
+
+    /**
+     * The name of the quota column in the database.
+     */
+    public static final String QUOTA_COLUMN = "quota";
+
+    /**
+     * The name of the quota safety threshold column in the database.
+     */
+    public static final String QUOTA_SAFETY_THRESHOLD_COLUMN = "quota_safety_threshold";
 
     /**
      * The primary key and unique name for this configuration profile (e.g.,
@@ -174,4 +184,16 @@ public class HubConfig {
      */
     @Column(name = HubConfig.CRON_TIME_ZONE_COLUMN)
     private String cronTimeZone;
+
+    /**
+     * The daily quota limit for the YouTube Data API. Defaults to 10,000.
+     */
+    @Column(name = HubConfig.QUOTA_COLUMN)
+    private Long quota = 10000L;
+
+    /**
+     * The safety threshold for the quota. Defaults to 500.
+     */
+    @Column(name = HubConfig.QUOTA_SAFETY_THRESHOLD_COLUMN)
+    private Long quotaSafetyThreshold = 500L;
 }

@@ -111,4 +111,14 @@ public class CreateConfigRequest {
      */
     private String cronTimeZone;
 
+    /**
+     * The daily quota limit for the YouTube Data API.
+     */
+    private Long quota;
+
+    /**
+     * The safety threshold for the quota.
+     */
+    private Long quotaSafetyThreshold;
+
 }

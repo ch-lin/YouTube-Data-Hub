@@ -38,6 +38,8 @@ class DefaultConfigFactoryTest {
         properties.setYoutubeApiKey("api-key");
         properties.setClientId("client-id");
         properties.setClientSecret("client-secret");
+        properties.setQuota(50000L);
+        properties.setQuotaSafetyThreshold(1000L);
 
         DefaultConfigFactory factory = new DefaultConfigFactory();
         HubConfig config = factory.create(properties);
@@ -47,5 +49,7 @@ class DefaultConfigFactoryTest {
         assertThat(config.getYoutubeApiKey()).isEqualTo("api-key");
         assertThat(config.getClientId()).isEqualTo("client-id");
         assertThat(config.getClientSecret()).isEqualTo("client-secret");
+        assertThat(config.getQuota()).isEqualTo(50000L);
+        assertThat(config.getQuotaSafetyThreshold()).isEqualTo(1000L);
     }
 }

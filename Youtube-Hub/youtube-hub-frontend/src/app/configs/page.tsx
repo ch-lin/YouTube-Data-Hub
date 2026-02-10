@@ -52,6 +52,8 @@ type HubConfig = {
   fixedRate?: number;
   cronExpression?: string;
   cronTimeZone?: string;
+  quota?: number;
+  quotaSafetyThreshold?: number;
 };
 
 const DOWNLOADER_API_URL = "/api";
@@ -422,7 +424,9 @@ export default function ConfigsPage() {
       schedulerType: 'CRON',
       fixedRate: 86400000,
       cronExpression: '0 0 9,15,21 * * *',
-      cronTimeZone: 'Asia/Taipei'
+      cronTimeZone: 'Asia/Taipei',
+      quota: 10000,
+      quotaSafetyThreshold: 500
     });
     setHubSaveStatus(null);
   };
@@ -1000,6 +1004,30 @@ export default function ConfigsPage() {
                         type="text"
                         name="youtubeApiKey"
                         value={hubConfigDetails.youtubeApiKey || ''}
+                        onChange={handleHubDetailChange}
+                        className="w-full font-mono bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 rounded-md shadow-sm p-2"
+                      />
+                    </td>
+                  </tr>
+                  <tr>
+                    <td className="px-3 py-4 text-sm font-medium text-gray-900 dark:text-gray-100">Daily Quota</td>
+                    <td className="px-3 py-4 text-sm text-gray-500 dark:text-gray-300">
+                      <input
+                        type="number"
+                        name="quota"
+                        value={hubConfigDetails.quota || ''}
+                        onChange={handleHubDetailChange}
+                        className="w-full font-mono bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 rounded-md shadow-sm p-2"
+                      />
+                    </td>
+                  </tr>
+                  <tr>
+                    <td className="px-3 py-4 text-sm font-medium text-gray-900 dark:text-gray-100">Quota Safety Threshold</td>
+                    <td className="px-3 py-4 text-sm text-gray-500 dark:text-gray-300">
+                      <input
+                        type="number"
+                        name="quotaSafetyThreshold"
+                        value={hubConfigDetails.quotaSafetyThreshold || ''}
                         onChange={handleHubDetailChange}
                         className="w-full font-mono bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 rounded-md shadow-sm p-2"
                       />

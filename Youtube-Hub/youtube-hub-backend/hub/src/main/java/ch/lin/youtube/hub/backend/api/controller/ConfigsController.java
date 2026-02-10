@@ -127,7 +127,9 @@ public class ConfigsController {
                 request.getSchedulerType(),
                 request.getFixedRate(),
                 request.getCronExpression(),
-                request.getCronTimeZone());
+                request.getCronTimeZone(),
+                request.getQuota(),
+                request.getQuotaSafetyThreshold());
 
         HubConfig createdConfig = configsService.createConfig(command);
 
@@ -222,6 +224,8 @@ public class ConfigsController {
                 .fixedRate(Optional.ofNullable(request.getFixedRate()))
                 .cronExpression(Optional.ofNullable(request.getCronExpression()))
                 .cronTimeZone(Optional.ofNullable(request.getCronTimeZone()))
+                .quota(Optional.ofNullable(request.getQuota()))
+                .quotaSafetyThreshold(Optional.ofNullable(request.getQuotaSafetyThreshold()))
                 .build();
 
         HubConfig savedConfig = configsService.saveConfig(command);

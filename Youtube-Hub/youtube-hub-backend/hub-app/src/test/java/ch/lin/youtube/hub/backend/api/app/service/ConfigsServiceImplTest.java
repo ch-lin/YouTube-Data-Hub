@@ -137,6 +137,17 @@ class ConfigsServiceImplTest {
     }
 
     @Test
+    void createConfig_ShouldThrowException_WhenQuotaSafetyThresholdIsNegative() {
+        CreateConfigCommand command = mock(CreateConfigCommand.class);
+        when(command.getName()).thenReturn("new-config");
+        when(command.getQuotaSafetyThreshold()).thenReturn(-1L);
+
+        assertThatThrownBy(() -> configsService.createConfig(command))
+                .isInstanceOf(InvalidRequestException.class)
+                .hasMessageContaining("Quota safety threshold cannot be negative");
+    }
+
+    @Test
     void saveConfig_ShouldThrowException_WhenTimeZoneIsInvalid() {
         UpdateConfigCommand command = mock(UpdateConfigCommand.class);
         when(command.getName()).thenReturn("existing");
@@ -165,12 +176,28 @@ class ConfigsServiceImplTest {
     }
 
     @Test
+    void saveConfig_ShouldThrowException_WhenQuotaSafetyThresholdIsNegative() {
+        UpdateConfigCommand command = mock(UpdateConfigCommand.class);
+        when(command.getName()).thenReturn("existing");
+        when(command.getEnabled()).thenReturn(Optional.empty());
+        when(command.getQuotaSafetyThreshold()).thenReturn(Optional.of(-1L));
+
+        when(hubConfigRepository.findByName("existing")).thenReturn(Optional.of(new HubConfig()));
+
+        assertThatThrownBy(() -> configsService.saveConfig(command))
+                .isInstanceOf(InvalidRequestException.class)
+                .hasMessageContaining("Quota safety threshold cannot be negative");
+    }
+
+    @Test
     @SuppressWarnings("null")
     void createConfig_ShouldSucceed_WhenCronAndTimeZoneAreValid() {
         CreateConfigCommand command = mock(CreateConfigCommand.class);
         when(command.getName()).thenReturn("valid-config");
         when(command.getCronExpression()).thenReturn("0 0 9 * * *");
         when(command.getCronTimeZone()).thenReturn("Asia/Taipei");
+        when(command.getQuota()).thenReturn(50000L);
+        when(command.getQuotaSafetyThreshold()).thenReturn(1000L);
 
         when(hubConfigRepository.findByName("valid-config")).thenReturn(Optional.empty());
         when(hubConfigRepository.save(any())).thenAnswer(i -> i.getArgument(0));
@@ -179,6 +206,37 @@ class ConfigsServiceImplTest {
 
         assertThat(created.getCronExpression()).isEqualTo("0 0 9 * * *");
         assertThat(created.getCronTimeZone()).isEqualTo("Asia/Taipei");
+        assertThat(created.getQuota()).isEqualTo(50000L);
+        assertThat(created.getQuotaSafetyThreshold()).isEqualTo(1000L);
+    }
+
+    @Test
+    @SuppressWarnings("null")
+    void createConfig_ShouldSucceed_WhenOptionalFieldsAreNull() {
+        CreateConfigCommand command = new CreateConfigCommand(
+                "config-nulls",
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null
+        );
+
+        when(hubConfigRepository.findByName("config-nulls")).thenReturn(Optional.empty());
+        when(hubConfigRepository.save(any())).thenAnswer(i -> i.getArgument(0));
+
+        HubConfig created = configsService.createConfig(command);
+
+        assertThat(created.getName()).isEqualTo("config-nulls");
+        assertThat(created.getQuotaSafetyThreshold()).isNull();
+        assertThat(created.getCronExpression()).isNull();
+        assertThat(created.getCronTimeZone()).isNull();
     }
 
     @Test
@@ -196,6 +254,8 @@ class ConfigsServiceImplTest {
         when(command.getAutoStartFetchScheduler()).thenReturn(Optional.empty());
         when(command.getSchedulerType()).thenReturn(Optional.empty());
         when(command.getFixedRate()).thenReturn(Optional.empty());
+        when(command.getQuota()).thenReturn(Optional.empty());
+        when(command.getQuotaSafetyThreshold()).thenReturn(Optional.empty());
 
         HubConfig existing = new HubConfig();
         existing.setName("existing");
@@ -368,11 +428,15 @@ class ConfigsServiceImplTest {
         when(command.getFixedRate()).thenReturn(Optional.empty());
         when(command.getCronExpression()).thenReturn(Optional.empty());
         when(command.getCronTimeZone()).thenReturn(Optional.empty());
+        when(command.getQuota()).thenReturn(Optional.of(20000L));
+        when(command.getQuotaSafetyThreshold()).thenReturn(Optional.of(1000L));
 
         HubConfig existingConfig = new HubConfig();
         existingConfig.setName(configName);
         existingConfig.setEnabled(false);
         existingConfig.setYoutubeApiKey("old-key");
+        existingConfig.setQuota(10000L);
+        existingConfig.setQuotaSafetyThreshold(500L);
 
         when(hubConfigRepository.findByName(configName)).thenReturn(Optional.of(existingConfig));
         when(hubConfigRepository.save(any())).thenAnswer(i -> i.getArgument(0));
@@ -383,6 +447,8 @@ class ConfigsServiceImplTest {
         assertThat(updated.getEnabled()).isTrue();
         assertThat(updated.getYoutubeApiKey()).isEqualTo("new-key");
         assertThat(updated.getAutoStartFetchScheduler()).isTrue();
+        assertThat(updated.getQuota()).isEqualTo(20000L);
+        assertThat(updated.getQuotaSafetyThreshold()).isEqualTo(1000L);
         verify(hubConfigRepository).save(existingConfig);
     }
 
@@ -416,6 +482,8 @@ class ConfigsServiceImplTest {
         dbConfig.setSchedulerType(null);
         dbConfig.setCronExpression(null);
         dbConfig.setCronTimeZone("");
+        dbConfig.setQuota(null);
+        dbConfig.setQuotaSafetyThreshold(null);
         // enabled is null, apiKey is null
 
         HubConfig defaultConfig = new HubConfig();
@@ -427,6 +495,8 @@ class ConfigsServiceImplTest {
         defaultConfig.setSchedulerType(SchedulerType.CRON);
         defaultConfig.setCronExpression("0 0 * * * *");
         defaultConfig.setCronTimeZone("UTC");
+        defaultConfig.setQuota(10000L);
+        defaultConfig.setQuotaSafetyThreshold(500L);
 
         when(hubConfigRepository.findByName("custom")).thenReturn(Optional.of(dbConfig));
         when(defaultConfigFactory.create(defaultProperties)).thenReturn(defaultConfig);
@@ -441,6 +511,8 @@ class ConfigsServiceImplTest {
         assertThat(result.getSchedulerType()).isEqualTo(SchedulerType.CRON);
         assertThat(result.getCronExpression()).isEqualTo("0 0 * * * *");
         assertThat(result.getCronTimeZone()).isEqualTo("UTC");
+        assertThat(result.getQuota()).isEqualTo(10000L);
+        assertThat(result.getQuotaSafetyThreshold()).isEqualTo(500L);
     }
 
     @Test
@@ -499,6 +571,8 @@ class ConfigsServiceImplTest {
         when(command.getFixedRate()).thenReturn(Optional.empty());
         when(command.getCronExpression()).thenReturn(Optional.empty());
         when(command.getCronTimeZone()).thenReturn(Optional.empty());
+        when(command.getQuota()).thenReturn(Optional.empty());
+        when(command.getQuotaSafetyThreshold()).thenReturn(Optional.empty());
 
         when(hubConfigRepository.findByName(configName)).thenReturn(Optional.empty());
         when(hubConfigRepository.save(any())).thenAnswer(i -> i.getArgument(0));
@@ -530,6 +604,8 @@ class ConfigsServiceImplTest {
         when(command.getFixedRate()).thenReturn(Optional.empty());
         when(command.getCronExpression()).thenReturn(Optional.empty());
         when(command.getCronTimeZone()).thenReturn(Optional.empty());
+        when(command.getQuota()).thenReturn(Optional.empty());
+        when(command.getQuotaSafetyThreshold()).thenReturn(Optional.empty());
 
         HubConfig otherConfig = new HubConfig();
         otherConfig.setName("other");
@@ -562,6 +638,8 @@ class ConfigsServiceImplTest {
         when(command.getFixedRate()).thenReturn(Optional.empty());
         when(command.getCronExpression()).thenReturn(Optional.empty());
         when(command.getCronTimeZone()).thenReturn(Optional.empty());
+        when(command.getQuota()).thenReturn(Optional.empty());
+        when(command.getQuotaSafetyThreshold()).thenReturn(Optional.empty());
 
         HubConfig currentConfig = new HubConfig();
         currentConfig.setName(configName);
@@ -607,6 +685,8 @@ class ConfigsServiceImplTest {
         dbConfig.setSchedulerType(SchedulerType.FIXED_RATE);
         dbConfig.setCronExpression("existing-cron");
         dbConfig.setCronTimeZone("existing-zone");
+        dbConfig.setQuota(5000L);
+        dbConfig.setQuotaSafetyThreshold(200L);
 
         when(hubConfigRepository.findByName("custom")).thenReturn(Optional.of(dbConfig));
 
@@ -617,6 +697,8 @@ class ConfigsServiceImplTest {
         defaultConfig.setSchedulerType(SchedulerType.CRON);
         defaultConfig.setCronExpression("default-cron");
         defaultConfig.setCronTimeZone("default-zone");
+        defaultConfig.setQuota(10000L);
+        defaultConfig.setQuotaSafetyThreshold(500L);
         when(defaultConfigFactory.create(defaultProperties)).thenReturn(defaultConfig);
 
         HubConfig result = configsService.getResolvedConfig("custom");
@@ -627,6 +709,8 @@ class ConfigsServiceImplTest {
         assertThat(result.getSchedulerType()).isEqualTo(SchedulerType.FIXED_RATE);
         assertThat(result.getCronExpression()).isEqualTo("existing-cron");
         assertThat(result.getCronTimeZone()).isEqualTo("existing-zone");
+        assertThat(result.getQuota()).isEqualTo(5000L);
+        assertThat(result.getQuotaSafetyThreshold()).isEqualTo(200L);
     }
 
     @SuppressWarnings("null")

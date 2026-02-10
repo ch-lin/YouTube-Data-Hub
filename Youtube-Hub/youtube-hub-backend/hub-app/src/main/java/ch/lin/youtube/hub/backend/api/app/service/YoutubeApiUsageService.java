@@ -53,4 +53,14 @@ public interface YoutubeApiUsageService {
      */
     void recordUsage(long cost);
 
+    /**
+     * Checks if the current daily usage allows for further processing,
+     * respecting the configured quota limit and safety threshold.
+     *
+     * @param dailyQuotaLimit The maximum allowed quota usage per day.
+     * @param safetyThreshold The buffer amount of quota to preserve.
+     * @return true if the current usage plus the threshold is less than the
+     * limit; false otherwise.
+     */
+    boolean hasSufficientQuota(long dailyQuotaLimit, long safetyThreshold);
 }

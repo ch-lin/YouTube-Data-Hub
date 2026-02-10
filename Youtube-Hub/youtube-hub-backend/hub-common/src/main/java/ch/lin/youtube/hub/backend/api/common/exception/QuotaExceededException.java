@@ -21,35 +21,34 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
  * THE SOFTWARE.
  *===========================================================================*/
-package ch.lin.youtube.hub.backend.api.app.config;
+package ch.lin.youtube.hub.backend.api.common.exception;
 
-import static org.assertj.core.api.Assertions.assertThat;
-import org.junit.jupiter.api.Test;
+import java.io.Serial;
 
-class HubDefaultPropertiesTest {
+import org.springframework.http.HttpStatus;
+import org.springframework.web.bind.annotation.ResponseStatus;
 
-    @Test
-    void testDefaults() {
-        HubDefaultProperties properties = new HubDefaultProperties();
-        assertThat(properties.getName()).isEqualTo("default");
-        assertThat(properties.getEnabled()).isTrue();
-        assertThat(properties.getQuota()).isEqualTo(10000L);
-        assertThat(properties.getQuotaSafetyThreshold()).isEqualTo(500L);
+/**
+ * Exception thrown when the daily YouTube API quota has been exceeded.
+ * <p>
+ * This exception indicates that the application has reached its configured
+ * limit for YouTube Data API requests for the day. The {@link ResponseStatus}
+ * annotation maps this exception to an HTTP 429 Too Many Requests status code.
+ */
+@ResponseStatus(HttpStatus.TOO_MANY_REQUESTS)
+public class QuotaExceededException extends RuntimeException {
+
+    @Serial
+    private static final long serialVersionUID = 1L;
+
+    /**
+     * Constructs a new QuotaExceededException with the specified detail
+     * message.
+     *
+     * @param message the detail message.
+     */
+    public QuotaExceededException(String message) {
+        super(message);
     }
 
-    @Test
-    void testSettersAndGetters() {
-        HubDefaultProperties properties = new HubDefaultProperties();
-        properties.setYoutubeApiKey("key");
-        properties.setClientId("id");
-        properties.setClientSecret("secret");
-        properties.setQuota(20000L);
-        properties.setQuotaSafetyThreshold(1000L);
-
-        assertThat(properties.getYoutubeApiKey()).isEqualTo("key");
-        assertThat(properties.getClientId()).isEqualTo("id");
-        assertThat(properties.getClientSecret()).isEqualTo("secret");
-        assertThat(properties.getQuota()).isEqualTo(20000L);
-        assertThat(properties.getQuotaSafetyThreshold()).isEqualTo(1000L);
-    }
 }
