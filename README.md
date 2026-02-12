@@ -194,10 +194,10 @@ Moving beyond asset management, the platform is evolving into a data intelligenc
 - [O] Add YouTube Data API Request Counter
 - [O] Add YouTube Data API Fetch Scheduler
 - [O] Save "Force Published After" UI Status
-- [ ] Implement Quota Check before YouTube Data API Requests
-- [ ] Add Paging Feature in YouTube Hub's REST API to Avoid Out of Memory
+- [O] Implement Quota Check before YouTube Data API Requests
+- [O] Add Paging Feature in YouTube Hub's REST API to Avoid Out of Memory
 - [ ] Implement YouTube Statistics Processing Task
-- [ ] Refactor: Decouple UI from Core Service (Frontend-Backend Separation)
+- [O] Decouple Frontend into Independent Project and Isolate Database Network
 - [ ] YouTube-Hub `YoutubeHubService` Refactor
 - [ ] Downloader `ExecutorService` Refactor
 - [ ] Infrastructure: Deploy to GCP using Terraform (Long-term Plan)

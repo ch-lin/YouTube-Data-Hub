@@ -69,6 +69,7 @@ fi
 #   auth       - Apply actions only to Authentication Service.
 #   youtube    - Apply actions only to YouTube Hub (and Downloader).
 #   downloader - Apply actions only to Downloader.
+#   frontend   - Apply actions only to YouTube Hub Frontend.
 #   (default)  - If neither is specified, actions apply to BOTH.
 #
 # Actions:
@@ -104,6 +105,7 @@ DELETE_FILES=false
 SCOPE_AUTH=false
 SCOPE_YOUTUBE=false
 SCOPE_DOWNLOADER=false
+SCOPE_FRONTEND=false
 ARGS_FOR_SUBSCRIPTS=""
 
 if [ $# -eq 0 ]; then
@@ -119,8 +121,10 @@ for arg in "$@"; do
     SCOPE_YOUTUBE=true
   elif [[ "${arg}" == "downloader" ]]; then
     SCOPE_DOWNLOADER=true
+  elif [[ "${arg}" == "frontend" ]]; then
+    SCOPE_FRONTEND=true
   elif [[ "${arg}" == "help" ]]; then
-    echo "Usage: $0 {auth|youtube|backend|frontend|downloader|db|apps|all|delete-db|help} [more args...]"
+    echo "Usage: $0 {auth|youtube|downloader|frontend|backend|db|apps|all|delete-db|help} [more args...]"
     exit 0
   else
     ARGS_FOR_SUBSCRIPTS="${ARGS_FOR_SUBSCRIPTS} ${arg}"
@@ -128,10 +132,11 @@ for arg in "$@"; do
 done
 
 # Default to both if neither specified
-if [[ "${SCOPE_AUTH}" == "false" ]] && [[ "${SCOPE_YOUTUBE}" == "false" ]] && [[ "${SCOPE_DOWNLOADER}" == "false" ]]; then
+if [[ "${SCOPE_AUTH}" == "false" ]] && [[ "${SCOPE_YOUTUBE}" == "false" ]] && [[ "${SCOPE_DOWNLOADER}" == "false" ]] && [[ "${SCOPE_FRONTEND}" == "false" ]]; then
   SCOPE_AUTH=true
   SCOPE_YOUTUBE=true
   SCOPE_DOWNLOADER=true
+  SCOPE_FRONTEND=true
 fi
 
 # If delete-db is requested, ensure 'db' target is included to stop containers
@@ -147,16 +152,20 @@ ARGS_FOR_SUBSCRIPTS="${ARGS_FOR_SUBSCRIPTS## }"
 AUTH_ARGS=""
 YOUTUBE_ARGS=""
 DOWNLOADER_ARGS=""
+FRONTEND_ARGS=""
 
 if [[ -z "${ARGS_FOR_SUBSCRIPTS}" ]]; then
   if [[ "${SCOPE_AUTH}" == "true" ]]; then
     AUTH_ARGS="backend db"
   fi
   if [[ "${SCOPE_YOUTUBE}" == "true" ]]; then
-    YOUTUBE_ARGS="backend frontend db"
+    YOUTUBE_ARGS="backend db"
   fi
   if [[ "${SCOPE_DOWNLOADER}" == "true" ]]; then
     DOWNLOADER_ARGS="backend db"
+  fi
+  if [[ "${SCOPE_FRONTEND}" == "true" ]]; then
+    FRONTEND_ARGS="all"
   fi
 else
   # Prepare arguments for specific services
@@ -165,21 +174,30 @@ else
     if [[ "${arg}" != "frontend" ]] && [[ "${arg}" != "downloader" ]]; then
       AUTH_ARGS="${AUTH_ARGS} ${arg}"
     fi
-    if [[ "${arg}" != "downloader" ]]; then
+    if [[ "${arg}" != "downloader" ]] && [[ "${arg}" != "frontend" ]]; then
       YOUTUBE_ARGS="${YOUTUBE_ARGS} ${arg}"
     fi
     if [[ "${arg}" != "frontend" ]]; then
       DOWNLOADER_ARGS="${DOWNLOADER_ARGS} ${arg}"
     fi
+    if [[ "${arg}" == "frontend" ]] || [[ "${arg}" == "all" ]]; then
+      FRONTEND_ARGS="${FRONTEND_ARGS} ${arg}"
+    fi
   done
   AUTH_ARGS="${AUTH_ARGS## }"
   YOUTUBE_ARGS="${YOUTUBE_ARGS## }"
   DOWNLOADER_ARGS="${DOWNLOADER_ARGS## }"
+  FRONTEND_ARGS="${FRONTEND_ARGS## }"
 fi
 
 if [[ "${SCOPE_YOUTUBE}" == "true" ]] && [[ -n "${YOUTUBE_ARGS}" ]]; then
   echo "Running Clean.sh for YouTube Hub..."
   (cd "${PROJECT}/Youtube-Hub" && run_priv bash Clean.sh ${YOUTUBE_ARGS})
+fi
+
+if [[ "${SCOPE_FRONTEND}" == "true" ]] && [[ -n "${FRONTEND_ARGS}" ]]; then
+  echo "Running Clean.sh for YouTube Hub Frontend..."
+  (cd "${PROJECT}/Youtube-Hub-Front" && run_priv bash Clean.sh ${FRONTEND_ARGS})
 fi
 
 if [[ "${SCOPE_DOWNLOADER}" == "true" ]] && [[ -n "${DOWNLOADER_ARGS}" ]]; then

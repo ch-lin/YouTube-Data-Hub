@@ -22,48 +22,12 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 # THE SOFTWARE.
 
-BACKEND=youtube-hub-backend
-
 # Service and Image Definitions
-SVC_BACKEND="youtube-hub-backend"
-IMG_BACKEND="youtube-hub-backend"
-SVC_DB="youtube-hub-db" # List all DB services using the DB image
-IMG_DB="youtube-hub-database"
+SVC_FRONTEND="youtube-hub-frontend"
+IMG_FRONTEND="youtube-hub-frontend"
 
 # Exit immediately if a command exits with a non-zero status.
 set -euo pipefail
-
-mvn_clean() {
-  if command -v mvn &> /dev/null; then
-    cd ${BACKEND} || {
-      echo "Folder ${BACKEND} does not exist!"
-      exit 1
-    }
-    echo "Cleaning Youtube Hub Backend Maven project..."
-    mvn clean || true
-    echo "Cleaning Youtube Hub Backend Maven project...done!"
-    cd ..
-  fi
-}
-
-clean_backend() {
-  echo "Stopping and removing Backend container..."
-  docker-compose stop ${SVC_BACKEND} 2>/dev/null || true
-  docker-compose rm -f ${SVC_BACKEND} 2>/dev/null || true
-  echo "Removing Backend image..."
-  docker image rm ${IMG_BACKEND} 2>/dev/null || true
-  mvn_clean
-}
-
-clean_db() {
-  echo "Stopping dependent containers..."
-  docker-compose stop ${SVC_BACKEND} 2>/dev/null || true
-  echo "Stopping and removing Database containers..."
-  docker-compose stop ${SVC_DB} 2>/dev/null || true
-  docker-compose rm -f ${SVC_DB} 2>/dev/null || true
-  echo "Removing Database image..."
-  docker image rm ${IMG_DB} 2>/dev/null || true
-}
 
 clean_all() {
   echo "Stopping and removing Docker containers and networks..."
@@ -74,11 +38,8 @@ clean_all() {
   echo "Stopping and removing Docker containers and networks...done!"
 
   echo "Removing Docker images..."
-  docker image rm ${IMG_BACKEND} 2>/dev/null || true
-  docker image rm ${IMG_DB} 2>/dev/null || true
+  docker image rm ${IMG_FRONTEND} 2>/dev/null || true
   echo "Removing Docker images...done!"
-
-  mvn_clean
 }
 
 if [ $# -eq 0 ]; then
@@ -86,24 +47,19 @@ if [ $# -eq 0 ]; then
 fi
 
 DO_ALL=false
-DO_BACKEND=false
-DO_DB=false
+DO_FRONTEND=false
 
 for arg in "$@"; do
   case "${arg}" in
-    backend) DO_BACKEND=true ;;
-    db) DO_DB=true ;;
-    apps)
-      DO_BACKEND=true
-      ;;
+    frontend) DO_FRONTEND=true ;;
     all) DO_ALL=true ;;
     help)
-      echo "Usage: $0 {backend|db|apps|all|help} [more args...]"
+      echo "Usage: $0 {frontend|all|help} [more args...]"
       exit 0
       ;;
     *)
       echo "Unknown argument: ${arg}"
-      echo "Usage: $0 {backend|db|apps|all|help} [more args...]"
+      echo "Usage: $0 {frontend|all|help} [more args...]"
       exit 1
       ;;
   esac
@@ -112,11 +68,8 @@ done
 if [[ "${DO_ALL}" == "true" ]]; then
   clean_all
 else
-  if [[ "${DO_BACKEND}" == "true" ]]; then
-    clean_backend
-  fi
-  if [[ "${DO_DB}" == "true" ]]; then
-    clean_db
+  if [[ "${DO_FRONTEND}" == "true" ]]; then
+    clean_frontend
   fi
 fi
 

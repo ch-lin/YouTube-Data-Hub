@@ -109,43 +109,6 @@ services:
       # Grace period for startup. Checks every 5s during this time.
       start_period: 60s
 
-  youtube-hub-frontend:
-    image: youtube-hub-frontend
-    build: 
-      context: ./youtube-hub-frontend/
-      dockerfile: Dockerfile
-      args:
-        # This is for client-side fetching from the browser, passed at build time
-        NEXT_PUBLIC_BROWSER_API_URL: ${PUBLIC_BACKEND_URL:-http://youtube-hub-backend:8080}
-    container_name: youtube-hub-frontend
-    hostname: youtube-hub-frontend
-    restart: unless-stopped
-    env_file: *common-env-files
-    networks:
-      youtube-hub-network:
-        ipv4_address: 172.16.13.12
-      shared-services-network:
-        ipv4_address: 172.16.10.13
-    ports:
-      - "${FRONTEND_PORT:-3000}:3000"
-    environment:
-      # Ensure Next.js binds to all interfaces (0.0.0.0) and uses port 3000
-      HOSTNAME: 0.0.0.0
-      PORT: 3000
-      # This is for server-side security and callback URLs, passed at runtime
-      AUTH_SECRET: ${AUTH_SECRET}
-      # When trustHost is true in auth.ts, NextAuth infers the URL from headers.
-      # Keep this commented out to support access via both public domain (https://...)
-      # and local IP (http://...) simultaneously.
-      # NEXTAUTH_URL: ${NEXTAUTH_URL}
-      # These are for server-side fetching from within the Next.js container
-      AUTH_SERVICE_API_URL: ${AUTH_SERVICE_API_URL:-http://authentication-backend:8080}
-      PUBLIC_BACKEND_URL: ${PUBLIC_BACKEND_URL:-http://youtube-hub-backend:8080}
-      PUBLIC_DOWNLOADER_URL: ${PUBLIC_DOWNLOADER_URL:-http://downloader-backend:8080}
-    depends_on:
-      youtube-hub-backend:
-        condition: service_healthy
-
 networks:
   youtube-hub-network:
     name: youtube-hub-network
