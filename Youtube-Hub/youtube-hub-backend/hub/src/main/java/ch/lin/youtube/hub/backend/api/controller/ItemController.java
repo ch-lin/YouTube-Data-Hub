@@ -24,8 +24,12 @@
 package ch.lin.youtube.hub.backend.api.controller;
 
 import java.util.List;
-import java.util.stream.Collectors;
 
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
+import org.springframework.data.web.PageableDefault;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -97,20 +101,26 @@ public class ItemController {
      * </pre>
      */
     @GetMapping(produces = MediaType.APPLICATION_JSON_VALUE)
-    public ResponseEntity<List<ItemResponse>> getAllItems(
+    public ResponseEntity<Page<ItemResponse>> getAllItems(
             @RequestParam(name = "notDownloaded", required = false) final Boolean notDownloaded,
             @RequestParam(name = "filterNoFileSize", required = false) final Boolean filterNoFileSize,
             @RequestParam(name = "liveBroadcastContent", required = false) final String liveBroadcastContent,
             @RequestParam(name = "filterNoTag", required = false) final Boolean filterNoTag,
             @RequestParam(name = "filterDeleted", required = false) final Boolean filterDeleted,
             @RequestParam(name = "scheduledTimeIsInThePast", required = false) final Boolean scheduledTimeIsInThePast,
-            @RequestParam(name = "channelIds", required = false) final List<String> channelIds) {
-        List<Item> items = itemService.getItems(
+            @RequestParam(name = "channelIds", required = false) final List<String> channelIds,
+            @PageableDefault(size = 50, sort = {"playlist.channel.channelId", "videoPublishedAt"}, direction = Sort.Direction.DESC) final Pageable pageable) {
+        Pageable effectivePageable = pageable;
+        if (channelIds == null || channelIds.isEmpty()) {
+            if (pageable.getPageSize() > 100) {
+                effectivePageable = PageRequest.of(pageable.getPageNumber(), 100, pageable.getSort());
+            }
+        }
+
+        Page<Item> items = itemService.getItems(
                 notDownloaded, filterNoFileSize, liveBroadcastContent, scheduledTimeIsInThePast,
-                filterNoTag, filterDeleted, channelIds);
-        List<ItemResponse> response = items.stream()
-                .map(ItemResponse::new)
-                .collect(Collectors.toList());
+                filterNoTag, filterDeleted, channelIds, effectivePageable);
+        Page<ItemResponse> response = items.map(ItemResponse::new);
         return ResponseEntity.ok(response);
     }
 

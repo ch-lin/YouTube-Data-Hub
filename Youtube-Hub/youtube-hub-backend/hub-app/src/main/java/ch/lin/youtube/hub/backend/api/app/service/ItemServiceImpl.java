@@ -27,10 +27,13 @@ import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -110,8 +113,8 @@ public class ItemServiceImpl implements ItemService {
      */
     @Override
     @Transactional(readOnly = true)
-    public List<Item> getItems(Boolean notDownloaded, Boolean filterNoFileSize, String liveBroadcastContent,
-            Boolean pastOnly, Boolean filterNoTag, Boolean filterDeleted, List<String> channelIds) {
+    public Page<Item> getItems(Boolean notDownloaded, Boolean filterNoFileSize, String liveBroadcastContent,
+            Boolean pastOnly, Boolean filterNoTag, Boolean filterDeleted, List<String> channelIds, Pageable pageable) {
         final OffsetDateTime now = OffsetDateTime.now();
 
         // Eagerly fetch associated entities to prevent LazyInitializationException in
@@ -214,7 +217,7 @@ public class ItemServiceImpl implements ItemService {
         }
 
         logger.info("Fetching items from the database with applied filters.");
-        return itemRepository.findAll(spec);
+        return itemRepository.findAll(spec, Objects.requireNonNull(pageable));
     }
 
     /**

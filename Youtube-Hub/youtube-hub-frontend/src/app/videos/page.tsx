@@ -34,6 +34,8 @@ export default function Home() {
   } | null>(null);
 
   const [items, setItems] = useState<Item[]>([]);
+  const [totalItems, setTotalItems] = useState(0);
+  const [totalPages, setTotalPages] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [updatingItems, setUpdatingItems] = useState<Set<string>>(new Set());
@@ -45,7 +47,12 @@ export default function Home() {
   const [itemsPerPage, setItemsPerPage] = useState(() => {
     if (typeof window === "undefined") return 100;
     const saved = localStorage.getItem("videos_itemsPerPage");
-    return saved ? Number(saved) : 100;
+    let val = saved ? Number(saved) : 100;
+    const savedChannel = localStorage.getItem("videos_selectedChannel") || "all";
+    if (savedChannel === "all" && val === Number.MAX_SAFE_INTEGER) {
+      val = 100;
+    }
+    return val;
   });
   const [currentPage, setCurrentPage] = useState(1);
   const [isFetching, setIsFetching] = useState(false);
@@ -139,7 +146,7 @@ export default function Home() {
     }
   }, [publishedAfterDate]);
 
-  const fetchItems = useCallback(async (mode: "available" | "upcoming" | "all" | "deleted", channelId: string) => {
+  const fetchItems = useCallback(async (mode: "available" | "upcoming" | "all" | "deleted", channelId: string, page: number, size: number) => {
     try {
       setLoading(true);
       setError(null);
@@ -159,6 +166,10 @@ export default function Home() {
       if (channelId !== "all") {
         params.append("channelIds", channelId);
       }
+      // Add pagination params (Spring Data uses 0-based index)
+      params.append("page", (page - 1).toString());
+      params.append("size", size.toString());
+
       const queryString = params.toString();
       if (queryString) {
         url += `?${queryString}`;
@@ -168,8 +179,16 @@ export default function Home() {
       if (!response.ok) {
         throw new Error(`HTTP error! Status: ${response.status}`);
       }
-      const data: Item[] = await response.json();
-      setItems(data);
+      const data = await response.json();
+      setItems(data.content);
+      // Spring Data Web Support with VIA_DTO wraps pagination metadata in a 'page' object
+      if (data.page) {
+        setTotalPages(data.page.totalPages);
+        setTotalItems(data.page.totalElements);
+      } else {
+        setTotalPages(data.totalPages);
+        setTotalItems(data.totalElements);
+      }
     } catch (e) {
       if (e instanceof Error) {
         setError(e.message);
@@ -183,9 +202,8 @@ export default function Home() {
   }, []);
 
   useEffect(() => {
-    fetchItems(viewMode, selectedChannel);
-    setCurrentPage(1); // Reset to first page on view mode change
-  }, [fetchItems, viewMode, selectedChannel]);
+    fetchItems(viewMode, selectedChannel, currentPage, itemsPerPage);
+  }, [fetchItems, viewMode, selectedChannel, currentPage, itemsPerPage]);
 
   const handleCopy = (videoId: string) => {
     const url = `https://www.youtube.com/watch?v=${videoId}`;
@@ -198,7 +216,7 @@ export default function Home() {
   };
 
   const handleRefresh = () => {
-    fetchItems(viewMode, selectedChannel);
+    fetchItems(viewMode, selectedChannel, currentPage, itemsPerPage);
   };
 
   const handleMarkAllDone = async () => {
@@ -239,7 +257,7 @@ export default function Home() {
       }
 
       setBanner({ message: `Successfully marked ${result.data.updatedItems} videos as done.`, type: "success" });
-      fetchItems(viewMode, selectedChannel); // Refresh list
+      fetchItems(viewMode, selectedChannel, currentPage, itemsPerPage); // Refresh list
     } catch (err) {
       const message = err instanceof Error ? err.message : "An unknown error occurred.";
       setBanner({ message, type: "error" });
@@ -342,7 +360,7 @@ export default function Home() {
         setBanner({ message, type: "success" });
       }
 
-      fetchItems(viewMode, selectedChannel); // Refresh the list on success
+      fetchItems(viewMode, selectedChannel, currentPage, itemsPerPage); // Refresh the list on success
     } catch (err) {
       let message = "An unknown error occurred.";
       if (err instanceof Error) {
@@ -439,28 +457,6 @@ export default function Home() {
     }
   };
 
-  const sortedItems = useMemo(() => {
-    return [...items].sort((a, b) => {
-      // Primary sort: channelId in ascending order to group channels
-      const channelCompare = a.channelId.localeCompare(b.channelId);
-      if (channelCompare !== 0) {
-        return channelCompare;
-      }
-      // Secondary sort: videoPublishedAt in descending order (newest first)
-      return b.videoPublishedAt.localeCompare(a.videoPublishedAt);
-    });
-  }, [items]);
-
-  const totalPages = useMemo(() => {
-    return Math.ceil(sortedItems.length / itemsPerPage);
-  }, [sortedItems.length, itemsPerPage]);
-
-  const paginatedItems = useMemo(() => {
-    const effectiveItemsPerPage = itemsPerPage === Number.MAX_SAFE_INTEGER ? sortedItems.length : itemsPerPage;
-    const startIndex = (currentPage - 1) * effectiveItemsPerPage;
-    return sortedItems.slice(startIndex, startIndex + effectiveItemsPerPage);
-  }, [sortedItems, currentPage, itemsPerPage]);
-
   const handleNextPage = () => {
     setCurrentPage((prev) => Math.min(prev + 1, totalPages));
   };
@@ -496,7 +492,12 @@ export default function Home() {
                   className="bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm p-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
                   value={selectedChannel}
                   onChange={(e) => {
-                    setSelectedChannel(e.target.value);
+                    const newChannel = e.target.value;
+                    setSelectedChannel(newChannel);
+                    setCurrentPage(1);
+                    if (newChannel === "all" && itemsPerPage === Number.MAX_SAFE_INTEGER) {
+                      setItemsPerPage(100);
+                    }
                   }}
                 >
                   <option value="all">All Channels</option>
@@ -511,6 +512,7 @@ export default function Home() {
                   value={viewMode}
                   onChange={(e) => { // prettier-ignore
                     setViewMode(e.target.value as "available" | "upcoming" | "all" | "deleted");
+                    setCurrentPage(1);
                   }}
                 >
                   <option value="all">All</option>
@@ -529,7 +531,9 @@ export default function Home() {
                   <option value={10}>10 per page</option>
                   <option value={50}>50 per page</option>
                   <option value={100}>100 per page</option>
-                  <option value={Number.MAX_SAFE_INTEGER}>All</option>
+                  {selectedChannel !== "all" && (
+                    <option value={Number.MAX_SAFE_INTEGER}>All</option>
+                  )}
                 </select>
                 <div className="flex items-center gap-4 ml-4">
                   <div className="flex items-center gap-2">
@@ -555,9 +559,9 @@ export default function Home() {
                 </div>
               </div>
               <div className="flex items-center gap-4">
-                {items.length > 0 && (
+                {totalItems > 0 && (
                   <p className="text-lg font-medium text-gray-600 dark:text-gray-400">
-                    Total Videos: {items.length}
+                    Total Videos: {totalItems}
                   </p>
                 )}
                   <button
@@ -638,7 +642,7 @@ export default function Home() {
               </tr>
             </thead>
             <tbody className="bg-background divide-y divide-gray-200 dark:divide-gray-700">
-              {paginatedItems.map((item) => (
+              {items.map((item) => (
                 <tr key={item.videoId}>
                   <td className="px-6 py-4 whitespace-normal break-words font-mono text-sm">
                     <a
