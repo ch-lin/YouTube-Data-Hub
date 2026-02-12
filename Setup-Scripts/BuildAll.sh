@@ -72,6 +72,7 @@ run_priv() {
 DO_AUTH=false
 DO_YOUTUBE=false
 DO_DOWNLOADER=false
+DO_FRONTEND=false
 
 if [ $# -eq 0 ]; then
   set -- "all"
@@ -82,18 +83,20 @@ for arg in "$@"; do
     auth) DO_AUTH=true ;;
     youtube) DO_YOUTUBE=true ;;
     downloader) DO_DOWNLOADER=true ;;
+    frontend) DO_FRONTEND=true ;;
     all)
       DO_AUTH=true
       DO_YOUTUBE=true
       DO_DOWNLOADER=true
+      DO_FRONTEND=true
       ;;
     help)
-      echo "Usage: $0 {auth|youtube|downloader|all|help}"
+      echo "Usage: $0 {auth|youtube|downloader|frontend|all|help}"
       exit 0
       ;;
     *)
       echo "Unknown argument: ${arg}"
-      echo "Usage: $0 {auth|youtube|downloader|all|help}"
+      echo "Usage: $0 {auth|youtube|downloader|frontend|all|help}"
       exit 1
       ;;
   esac
@@ -115,4 +118,9 @@ fi
 if [[ "${DO_YOUTUBE}" == "true" ]]; then
   echo "Running Build.sh for YouTube Hub with build environment: '${BUILD_ENV}'..."
   (cd "${PROJECT}/Youtube-Hub" && run_priv bash Build.sh "${BUILD_ENV}")
+fi
+
+if [[ "${DO_FRONTEND}" == "true" ]]; then
+  echo "Running Build.sh for YouTube Hub Frontend with build environment: '${BUILD_ENV}'..."
+  (cd "${PROJECT}/Youtube-Hub-Front" && run_priv bash Build.sh "${BUILD_ENV}")
 fi
