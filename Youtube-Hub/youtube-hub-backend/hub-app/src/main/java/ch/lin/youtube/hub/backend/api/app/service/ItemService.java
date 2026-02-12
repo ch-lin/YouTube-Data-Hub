@@ -2,6 +2,9 @@ package ch.lin.youtube.hub.backend.api.app.service;
 
 import java.util.List;
 
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+
 import ch.lin.youtube.hub.backend.api.app.service.model.ItemUpdateResult;
 import ch.lin.youtube.hub.backend.api.domain.model.Item;
 import ch.lin.youtube.hub.backend.api.domain.model.ProcessingStatus;
@@ -43,10 +46,11 @@ public interface ItemService {
      * deleted.
      * @param channelIds A list of channel IDs to filter by. If provided, only
      * items from these channels are returned.
-     * @return A list of {@link Item} entities matching the filter criteria.
+     * @param pageable The pagination information.
+     * @return A page of {@link Item} entities matching the filter criteria.
      */
-    List<Item> getItems(Boolean notDownloaded, Boolean filterNoFileSize, String liveBroadcastContent,
-            Boolean pastOnly, Boolean filterNoTag, Boolean filterDeleted, List<String> channelIds);
+    Page<Item> getItems(Boolean notDownloaded, Boolean filterNoFileSize, String liveBroadcastContent,
+            Boolean pastOnly, Boolean filterNoTag, Boolean filterDeleted, List<String> channelIds, Pageable pageable);
 
     /**
      * Updates an item's information after a download attempt.

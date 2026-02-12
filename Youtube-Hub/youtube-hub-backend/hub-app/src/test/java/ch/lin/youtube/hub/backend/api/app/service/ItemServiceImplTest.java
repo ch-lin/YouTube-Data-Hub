@@ -47,6 +47,8 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.domain.Specification;
 
 import ch.lin.platform.exception.InvalidRequestException;
@@ -90,25 +92,25 @@ class ItemServiceImplTest {
         verify(itemRepository).cleanTable();
     }
 
-    @SuppressWarnings("unchecked")
     @Test
+    @SuppressWarnings({"unchecked", "null"})
     void getItems_ShouldCallRepositoryWithSpecification() {
-        when(itemRepository.findAll(any(Specification.class))).thenReturn(Collections.emptyList());
+        when(itemRepository.findAll(any(Specification.class), any(Pageable.class))).thenReturn(Page.empty());
 
-        List<Item> result = itemService.getItems(true, false, "none", false, false, false, null);
+        Page<Item> result = itemService.getItems(true, false, "none", false, false, false, null, Pageable.unpaged());
 
         assertThat(result).isEmpty();
-        verify(itemRepository).findAll(any(Specification.class));
+        verify(itemRepository).findAll(any(Specification.class), any(Pageable.class));
     }
 
-    @SuppressWarnings("unchecked")
     @Test
+    @SuppressWarnings({"unchecked", "null"})
     void getItems_WithDifferentFilters_ShouldCallRepository() {
-        when(itemRepository.findAll(any(Specification.class))).thenReturn(Collections.emptyList());
+        when(itemRepository.findAll(any(Specification.class), any(Pageable.class))).thenReturn(Page.empty());
 
-        itemService.getItems(false, true, "not_none", true, true, true, List.of("ch1"));
+        itemService.getItems(false, true, "not_none", true, true, true, List.of("ch1"), Pageable.unpaged());
 
-        verify(itemRepository).findAll(any(Specification.class));
+        verify(itemRepository).findAll(any(Specification.class), any(Pageable.class));
     }
 
     @Test
@@ -420,33 +422,33 @@ class ItemServiceImplTest {
         verify(itemRepository, never()).findByTagAndVideoIdNotAndDownloadInfosFileSize(any(), anyString(), anyLong());
     }
 
-    @SuppressWarnings("unchecked")
+    @SuppressWarnings({"unchecked", "null"})
     @Test
     void getItems_ShouldHandleNullNotDownloaded() {
-        when(itemRepository.findAll(any(Specification.class))).thenReturn(Collections.emptyList());
-        itemService.getItems(null, false, null, false, false, false, null);
-        verify(itemRepository).findAll(any(Specification.class));
+        when(itemRepository.findAll(any(Specification.class), any(Pageable.class))).thenReturn(Page.empty());
+        itemService.getItems(null, false, null, false, false, false, null, Pageable.unpaged());
+        verify(itemRepository).findAll(any(Specification.class), any(Pageable.class));
     }
 
-    @SuppressWarnings("unchecked")
+    @SuppressWarnings({"unchecked", "null"})
     @Test
     void getItems_ShouldHandleEdgeCaseFilters() {
-        when(itemRepository.findAll(any(Specification.class))).thenReturn(Collections.emptyList());
+        when(itemRepository.findAll(any(Specification.class), any(Pageable.class))).thenReturn(Page.empty());
 
         // Case 1: Nulls for Boolean filters, Blank liveBroadcastContent, Empty channelIds
         // filterNoFileSize = null, filterNoTag = null, filterDeleted = null
-        itemService.getItems(false, null, "   ", false, null, null, Collections.emptyList());
+        itemService.getItems(false, null, "   ", false, null, null, Collections.emptyList(), Pageable.unpaged());
 
         // Case 2: Invalid liveBroadcastContent
-        itemService.getItems(false, false, "invalid_value", false, false, false, null);
+        itemService.getItems(false, false, "invalid_value", false, false, false, null, Pageable.unpaged());
 
         // Case 3: liveBroadcastContent = "not_none", pastOnly = null
-        itemService.getItems(false, false, "not_none", null, false, false, null);
+        itemService.getItems(false, false, "not_none", null, false, false, null, Pageable.unpaged());
 
-        verify(itemRepository, times(3)).findAll(any(Specification.class));
+        verify(itemRepository, times(3)).findAll(any(Specification.class), any(Pageable.class));
     }
 
-    @SuppressWarnings("unchecked")
+    @SuppressWarnings({"unchecked", "null"})
     @Test
     void getItems_ShouldExecuteSpecificationPredicates() {
         // Mocks for Criteria API to ensure branch coverage of Specification lambdas
@@ -483,10 +485,10 @@ class ItemServiceImplTest {
         when(join.get(anyString())).thenReturn(path);
 
         ArgumentCaptor<Specification<Item>> captor = ArgumentCaptor.forClass(Specification.class);
-        when(itemRepository.findAll(captor.capture())).thenReturn(Collections.emptyList());
+        when(itemRepository.findAll(captor.capture(), any(Pageable.class))).thenReturn(Page.empty());
 
         // 1. Execute with notDownloaded = true
-        itemService.getItems(true, false, null, false, false, false, null);
+        itemService.getItems(true, false, null, false, false, false, null, Pageable.unpaged());
         Specification<Item> spec1 = captor.getValue();
 
         // Execute predicate logic for different query types
@@ -499,15 +501,15 @@ class ItemServiceImplTest {
         spec1.toPredicate(root, query, cb); // Fetch query
 
         // 2. Execute with other filters to hit remaining branches
-        itemService.getItems(false, true, "none", false, true, true, List.of("ch1"));
+        itemService.getItems(false, true, "none", false, true, true, List.of("ch1"), Pageable.unpaged());
         Specification<Item> spec2 = captor.getValue();
         spec2.toPredicate(root, query, cb);
         spec2.toPredicate(root, null, cb); // Cover query == null inside filterNoFileSize
 
         // 3. Execute with liveBroadcastContent = "not_none" and pastOnly = true/false
-        itemService.getItems(false, false, "not_none", true, false, false, null);
+        itemService.getItems(false, false, "not_none", true, false, false, null, Pageable.unpaged());
         captor.getValue().toPredicate(root, query, cb);
-        itemService.getItems(false, false, "not_none", false, false, false, null);
+        itemService.getItems(false, false, "not_none", false, false, false, null, Pageable.unpaged());
         captor.getValue().toPredicate(root, query, cb);
     }
 }
