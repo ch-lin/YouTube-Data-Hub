@@ -69,6 +69,7 @@ import ch.lin.youtube.hub.backend.api.domain.model.DownloadInfo;
 import ch.lin.youtube.hub.backend.api.domain.model.HubConfig;
 import ch.lin.youtube.hub.backend.api.domain.model.Item;
 import ch.lin.youtube.hub.backend.api.domain.model.LiveBroadcastContent;
+import ch.lin.youtube.hub.backend.api.domain.model.Playlist;
 import ch.lin.youtube.hub.backend.api.domain.model.ProcessingStatus;
 import jakarta.persistence.criteria.CriteriaBuilder;
 import jakarta.persistence.criteria.CriteriaQuery;
@@ -566,6 +567,11 @@ class YoutubeHubServiceImplTest {
         channel2.setChannelId("ch2");
         when(channelRepository.findAll()).thenReturn(List.of(channel1, channel2));
 
+        Playlist playlist1 = new Playlist();
+        playlist1.setPlaylistId("pl1");
+        Playlist playlist2 = new Playlist();
+        playlist2.setPlaylistId("pl2");
+
         PlaylistProcessingResult result1 = new PlaylistProcessingResult();
         result1.setNewItemsCount(2);
         result1.setStandardVideoCount(1);
@@ -576,8 +582,11 @@ class YoutubeHubServiceImplTest {
         result2.setLiveVideoCount(3);
         result2.setUpdatedItemsCount(1);
 
-        when(channelProcessingService.processSingleChannel(eq(channel1), any(), anyString(), anyLong(), anyLong(), anyLong(), any(), eq(false))).thenReturn(result1);
-        when(channelProcessingService.processSingleChannel(eq(channel2), any(), anyString(), anyLong(), anyLong(), anyLong(), any(), eq(false))).thenReturn(result2);
+        when(channelProcessingService.prepareChannelAndPlaylist(eq(channel1), any(), anyString(), anyLong(), anyLong(), anyLong())).thenReturn(playlist1);
+        when(channelProcessingService.prepareChannelAndPlaylist(eq(channel2), any(), anyString(), anyLong(), anyLong(), anyLong())).thenReturn(playlist2);
+
+        when(channelProcessingService.processPlaylistItems(eq(playlist1), any(), anyString(), any(), eq(false), anyLong(), anyLong(), anyLong())).thenReturn(result1);
+        when(channelProcessingService.processPlaylistItems(eq(playlist2), any(), anyString(), any(), eq(false), anyLong(), anyLong(), anyLong())).thenReturn(result2);
 
         try (MockedConstruction<HttpClient> mocked = mockConstruction(HttpClient.class)) {
             Map<String, Object> result = service.processJob(null, null, null, null, false, null);
@@ -605,7 +614,7 @@ class YoutubeHubServiceImplTest {
         channel2.setChannelId("ch2");
         when(channelRepository.findAll()).thenReturn(List.of(channel1, channel2));
 
-        when(channelProcessingService.processSingleChannel(eq(channel1), any(), anyString(), anyLong(), anyLong(), anyLong(), any(), eq(false)))
+        when(channelProcessingService.prepareChannelAndPlaylist(eq(channel1), any(), anyString(), anyLong(), anyLong(), anyLong()))
                 .thenThrow(new QuotaExceededException("Quota limit reached"));
 
         try (MockedConstruction<HttpClient> mocked = mockConstruction(HttpClient.class)) {
@@ -614,7 +623,7 @@ class YoutubeHubServiceImplTest {
             // Should stop after first channel, so 0 processed successfully
             assertThat(result.get("processedChannels")).isEqualTo(0);
             // Verify second channel was NOT processed
-            verify(channelProcessingService, never()).processSingleChannel(eq(channel2), any(), anyString(), anyLong(), anyLong(), anyLong(), any(), eq(false));
+            verify(channelProcessingService, never()).prepareChannelAndPlaylist(eq(channel2), any(), anyString(), anyLong(), anyLong(), anyLong());
         }
     }
 
@@ -632,9 +641,13 @@ class YoutubeHubServiceImplTest {
         channel2.setChannelId("ch2");
         when(channelRepository.findAll()).thenReturn(List.of(channel1, channel2));
 
-        when(channelProcessingService.processSingleChannel(eq(channel1), any(), anyString(), anyLong(), anyLong(), anyLong(), any(), eq(false)))
+        Playlist playlist2 = new Playlist();
+        playlist2.setPlaylistId("pl2");
+
+        when(channelProcessingService.prepareChannelAndPlaylist(eq(channel1), any(), anyString(), anyLong(), anyLong(), anyLong()))
                 .thenThrow(new YoutubeApiRequestException("API Error"));
-        when(channelProcessingService.processSingleChannel(eq(channel2), any(), anyString(), anyLong(), anyLong(), anyLong(), any(), eq(false)))
+        when(channelProcessingService.prepareChannelAndPlaylist(eq(channel2), any(), anyString(), anyLong(), anyLong(), anyLong())).thenReturn(playlist2);
+        when(channelProcessingService.processPlaylistItems(eq(playlist2), any(), anyString(), any(), eq(false), anyLong(), anyLong(), anyLong()))
                 .thenReturn(new PlaylistProcessingResult());
 
         try (MockedConstruction<HttpClient> mocked = mockConstruction(HttpClient.class)) {
