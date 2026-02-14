@@ -66,6 +66,7 @@ import ch.lin.youtube.hub.backend.api.domain.model.DownloadInfo;
 import ch.lin.youtube.hub.backend.api.domain.model.HubConfig;
 import ch.lin.youtube.hub.backend.api.domain.model.Item;
 import ch.lin.youtube.hub.backend.api.domain.model.LiveBroadcastContent;
+import ch.lin.youtube.hub.backend.api.domain.model.Playlist;
 import ch.lin.youtube.hub.backend.api.domain.model.ProcessingStatus;
 import jakarta.persistence.criteria.JoinType;
 import jakarta.persistence.criteria.Predicate;
@@ -196,9 +197,11 @@ public class YoutubeHubServiceImpl implements YoutubeHubService {
         try (HttpClient client = new HttpClient(Scheme.HTTPS, "youtube.googleapis.com", 443)) {
             for (Channel channel : channels) {
                 try {
-                    PlaylistProcessingResult channelResult = channelProcessingService.processSingleChannel(
-                            channel, client, apiKey, delayInMilliseconds,
-                            quotaLimit, quotaThreshold, publishedAfter, forcePublishedAfter);
+                    Playlist playlist = channelProcessingService.prepareChannelAndPlaylist(
+                            channel, client, apiKey, delayInMilliseconds, quotaLimit, quotaThreshold);
+
+                    PlaylistProcessingResult channelResult = channelProcessingService.processPlaylistItems(
+                            playlist, client, apiKey, publishedAfter, forcePublishedAfter, delayInMilliseconds, quotaLimit, quotaThreshold);
 
                     newItemsCount += channelResult.getNewItemsCount();
                     standardVideoCount += channelResult.getStandardVideoCount();

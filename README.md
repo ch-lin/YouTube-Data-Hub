@@ -198,7 +198,7 @@ Moving beyond asset management, the platform is evolving into a data intelligenc
 - [O] Add Paging Feature in YouTube Hub's REST API to Avoid Out of Memory
 - [ ] Implement YouTube Statistics Processing Task
 - [O] Decouple Frontend into Independent Project and Isolate Database Network
-- [ ] YouTube-Hub `YoutubeHubService` Refactor
+- [O] YouTube-Hub `YoutubeHubService` Refactor
 - [ ] Downloader `ExecutorService` Refactor
 - [ ] Infrastructure: Deploy to GCP using Terraform (Long-term Plan)
 

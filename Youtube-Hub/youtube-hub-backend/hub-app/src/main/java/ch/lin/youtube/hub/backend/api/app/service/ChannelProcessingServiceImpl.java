@@ -57,6 +57,11 @@ import ch.lin.youtube.hub.backend.api.domain.model.Channel;
 import ch.lin.youtube.hub.backend.api.domain.model.Item;
 import ch.lin.youtube.hub.backend.api.domain.model.Playlist;
 
+/**
+ * Implementation of {@link ChannelProcessingService}.
+ * <p>
+ * This service handles the logic for processing individual YouTube channels.
+ */
 @Service
 public class ChannelProcessingServiceImpl implements ChannelProcessingService {
 
@@ -70,6 +75,16 @@ public class ChannelProcessingServiceImpl implements ChannelProcessingService {
     private final VideoFetchService videoFetchService;
     private final YoutubeCheckpointService youtubeCheckpointService;
 
+    /**
+     * Constructs a new ChannelProcessingServiceImpl.
+     *
+     * @param channelRepository the repository for channel data
+     * @param playlistRepository the repository for playlist data
+     * @param itemRepository the repository for item data
+     * @param youtubeApiUsageService the service for tracking API usage
+     * @param videoFetchService the service for fetching video details
+     * @param youtubeCheckpointService the service for saving checkpoints
+     */
     public ChannelProcessingServiceImpl(ChannelRepository channelRepository, PlaylistRepository playlistRepository,
             ItemRepository itemRepository, YoutubeApiUsageService youtubeApiUsageService,
             VideoFetchService videoFetchService, YoutubeCheckpointService youtubeCheckpointService) {
@@ -82,16 +97,12 @@ public class ChannelProcessingServiceImpl implements ChannelProcessingService {
     }
 
     /**
-     * Processes a single channel in a transactional scope. This ensures that
-     * database connections are reused efficiently within the channel
-     * processing, and the Hibernate session is flushed/cleared after the
-     * channel is done, preventing OOM.
+     * {@inheritDoc}
      */
     @Override
     @Transactional
-    public PlaylistProcessingResult processSingleChannel(Channel channel, HttpClient client, String apiKey,
-            long delayInMilliseconds, long quotaLimit, long quotaThreshold,
-            OffsetDateTime publishedAfter, boolean forcePublishedAfter) {
+    public Playlist prepareChannelAndPlaylist(Channel channel, HttpClient client, String apiKey,
+            long delayInMilliseconds, long quotaLimit, long quotaThreshold) {
 
         logger.info("Processing channel: {} ({})", channel.getTitle(), channel.getChannelId());
 
@@ -111,7 +122,7 @@ public class ChannelProcessingServiceImpl implements ChannelProcessingService {
         }
 
         // 3. Get or Create Playlist
-        Playlist uploadsPlaylist = playlistRepository.findByPlaylistId(uploadsPlaylistId)
+        return playlistRepository.findByPlaylistId(uploadsPlaylistId)
                 .orElseGet(() -> {
                     logger.info("  -> Uploads playlist with ID {} not found in DB. Creating it.", uploadsPlaylistId);
                     Playlist newPlaylist = new Playlist();
@@ -120,11 +131,20 @@ public class ChannelProcessingServiceImpl implements ChannelProcessingService {
                     newPlaylist.setChannel(channel);
                     return playlistRepository.save(newPlaylist);
                 });
+    }
 
-        logger.info("  -> Processing playlist: {} ({})", uploadsPlaylist.getTitle(), uploadsPlaylist.getPlaylistId());
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    @Transactional
+    public PlaylistProcessingResult processPlaylistItems(Playlist playlist, HttpClient client, String apiKey,
+            OffsetDateTime publishedAfter, boolean forcePublishedAfter,
+            long delayInMilliseconds, long quotaLimit, long quotaThreshold) {
+        logger.info("  -> Processing playlist: {} ({})", playlist.getTitle(), playlist.getPlaylistId());
 
         // 4. Fetch items
-        return fetchAndProcessPlaylistItems(client, uploadsPlaylist, apiKey,
+        return fetchAndProcessPlaylistItems(client, playlist, apiKey,
                 publishedAfter, forcePublishedAfter, delayInMilliseconds, quotaLimit, quotaThreshold);
     }
 
@@ -140,6 +160,7 @@ public class ChannelProcessingServiceImpl implements ChannelProcessingService {
      * @param quotaLimit the daily quota limit
      * @param quotaThreshold the safety threshold for quota
      * @return a map containing "uploadsPlaylistId" and "title"
+     * @throws QuotaExceededException if the daily quota limit is reached.
      * @throws YoutubeApiAuthException if the API key is invalid.
      * @throws YoutubeApiRequestException if the API call fails or the response
      * cannot be parsed.
@@ -210,6 +231,9 @@ public class ChannelProcessingServiceImpl implements ChannelProcessingService {
      * @param quotaThreshold the safety threshold for quota
      * @return a {@link PlaylistProcessingResult} containing the counts of new
      * and updated items
+     * @throws QuotaExceededException if the daily quota limit is reached.
+     * @throws YoutubeApiAuthException if the API key is invalid.
+     * @throws YoutubeApiRequestException if the API call fails.
      */
     private PlaylistProcessingResult fetchAndProcessPlaylistItems(HttpClient client, Playlist playlist, String apiKey,
             OffsetDateTime requestPublishedAfter,
