@@ -21,45 +21,26 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
  * THE SOFTWARE.
  *===========================================================================*/
-package ch.lin.youtube.hub.backend.api.common.exception;
+package ch.lin.youtube.hub.backend.api.app.service;
 
-import java.io.Serial;
+import java.time.OffsetDateTime;
 
-import org.springframework.http.HttpStatus;
-import org.springframework.web.bind.annotation.ResponseStatus;
+import ch.lin.platform.http.HttpClient;
+import ch.lin.youtube.hub.backend.api.app.service.model.PlaylistProcessingResult;
+import ch.lin.youtube.hub.backend.api.domain.model.Channel;
 
 /**
- * Exception thrown when a request to the YouTube Data API fails due to an
- * authentication issue.
- * <p>
- * This typically occurs when the provided API key is invalid, expired, or does
- * not have the necessary permissions. The {@link ResponseStatus} annotation
- * maps this exception to an HTTP 401 Unauthorized status code.
+ * Service responsible for processing individual YouTube channels.
  */
-@ResponseStatus(HttpStatus.UNAUTHORIZED)
-public class YoutubeApiAuthException extends RuntimeException {
-
-    @Serial
-    private static final long serialVersionUID = 1L;
+public interface ChannelProcessingService {
 
     /**
-     * Constructs a new YoutubeApiAuthException with the specified detail
-     * message.
-     *
-     * @param message the detail message.
+     * Processes a single channel, fetching its details and processing its
+     * uploads playlist. This method should handle the transaction boundary for
+     * the channel processing.
      */
-    public YoutubeApiAuthException(String message) {
-        super(message);
-    }
+    PlaylistProcessingResult processSingleChannel(Channel channel, HttpClient client, String apiKey,
+            long delayInMilliseconds, long quotaLimit, long quotaThreshold,
+            OffsetDateTime publishedAfter, boolean forcePublishedAfter);
 
-    /**
-     * Constructs a new YoutubeApiAuthException with the specified detail
-     * message and cause.
-     *
-     * @param message the detail message.
-     * @param cause the underlying cause of the exception.
-     */
-    public YoutubeApiAuthException(String message, Throwable cause) {
-        super(message, cause);
-    }
 }
