@@ -21,45 +21,20 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
  * THE SOFTWARE.
  *===========================================================================*/
-package ch.lin.youtube.hub.backend.api.common.exception;
+package ch.lin.youtube.hub.backend.api.app.service.model;
 
-import java.io.Serial;
-
-import org.springframework.http.HttpStatus;
-import org.springframework.web.bind.annotation.ResponseStatus;
+import lombok.Data;
 
 /**
- * Exception thrown when a request to the YouTube Data API fails due to an
- * authentication issue.
- * <p>
- * This typically occurs when the provided API key is invalid, expired, or does
- * not have the necessary permissions. The {@link ResponseStatus} annotation
- * maps this exception to an HTTP 401 Unauthorized status code.
+ * Encapsulates the counts of different types of items processed from a
+ * playlist.
  */
-@ResponseStatus(HttpStatus.UNAUTHORIZED)
-public class YoutubeApiAuthException extends RuntimeException {
+@Data
+public class PlaylistProcessingResult {
 
-    @Serial
-    private static final long serialVersionUID = 1L;
-
-    /**
-     * Constructs a new YoutubeApiAuthException with the specified detail
-     * message.
-     *
-     * @param message the detail message.
-     */
-    public YoutubeApiAuthException(String message) {
-        super(message);
-    }
-
-    /**
-     * Constructs a new YoutubeApiAuthException with the specified detail
-     * message and cause.
-     *
-     * @param message the detail message.
-     * @param cause the underlying cause of the exception.
-     */
-    public YoutubeApiAuthException(String message, Throwable cause) {
-        super(message, cause);
-    }
+    private int newItemsCount = 0;
+    private int standardVideoCount = 0;
+    private int upcomingVideoCount = 0;
+    private int liveVideoCount = 0;
+    private int updatedItemsCount = 0;
 }

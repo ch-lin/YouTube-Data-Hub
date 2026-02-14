@@ -31,6 +31,15 @@ import org.springframework.web.bind.annotation.ResponseStatus;
 class YoutubeApiAuthExceptionTest {
 
     @Test
+    void testConstructorWithMessage() {
+        String message = "Authentication failed";
+        YoutubeApiAuthException exception = new YoutubeApiAuthException(message);
+
+        assertThat(exception.getMessage()).isEqualTo(message);
+        assertThat(exception.getCause()).isNull();
+    }
+
+    @Test
     void testConstructorWithMessageAndCause() {
         String message = "Authentication failed";
         Throwable cause = new RuntimeException("Invalid API Key");
