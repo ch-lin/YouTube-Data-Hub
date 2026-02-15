@@ -141,6 +141,10 @@ public class ChannelProcessingServiceImpl implements ChannelProcessingService {
     public PlaylistProcessingResult processPlaylistItems(Playlist playlist, HttpClient client, String apiKey,
             OffsetDateTime publishedAfter, boolean forcePublishedAfter,
             long delayInMilliseconds, long quotaLimit, long quotaThreshold) {
+        // Reload the playlist to ensure it is attached to the current persistence context.
+        // This prevents issues with detached entities when saving associated items.
+        playlist = playlistRepository.findByPlaylistId(playlist.getPlaylistId()).orElseThrow();
+
         logger.info("  -> Processing playlist: {} ({})", playlist.getTitle(), playlist.getPlaylistId());
 
         // 4. Fetch items
